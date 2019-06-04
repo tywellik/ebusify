@@ -9,7 +9,7 @@ public:
     HydroPlant(struct EnergySourceParameters const &esp);
     ~HydroPlant();
 
-    int get_emissionsOutput(Emissions& emissions, float powerRequest) override;
+    int get_emissionsOutput(Emissions& emissions) override;
 
     int get_productionCost(float &cost, float powerRequest) override;
 
@@ -29,7 +29,7 @@ HydroPlant::~HydroPlant()
 
 
 int
-HydroPlant::get_emissionsOutput(Emissions& emissions, float powerRequest)
+HydroPlant::get_emissionsOutput(Emissions& emissions)
 {
     emissions.carbonDioxide = 0;
     emissions.methane       = 0;
@@ -42,7 +42,7 @@ HydroPlant::get_emissionsOutput(Emissions& emissions, float powerRequest)
 int
 HydroPlant::get_productionCost(float &cost, float powerRequest)
 {
-    cost = powerRequest * _runCost;
+    cost = powerRequest * _runCost / 3600;
 }
 
 } // namespace NRG

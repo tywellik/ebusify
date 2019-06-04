@@ -5,6 +5,7 @@
 namespace NRG {
 
 #define     SUCCESS 0
+#define     FAILURE 1
 
 
 enum EnergyFuels {
@@ -20,10 +21,10 @@ enum EnergyFuels {
 };
 
 struct EnergySourceParameters {
-    float maxCapacity;  /** MW               */
-    float minCapacity;  /** MW               */
-    float runCost;      /** $/MWh            */
-    float rampRate;     /** %maxCapacity/min */
+    float maxCapacity;  /** MW                 */
+    float minCapacity;  /** % Max output power */
+    float runCost;      /** $/MWh              */
+    float rampRate;     /** %maxCapacity/min   */
 };
 
 class EnergySource
@@ -36,6 +37,7 @@ public:
     float get_minOutputPower() const;
     float get_maxPositiveRamp() const;
     float get_maxNegativeRamp() const;
+    float get_currPower() const;
 
     void set_powerPoint(float power);
 
@@ -46,18 +48,18 @@ public:
         // Add more as necessary
     };
 
-    virtual int get_emissionsOutput(Emissions& emissions, float powerRequest) = 0;
+    virtual int get_emissionsOutput(Emissions& emissions) = 0;
 
     virtual int get_productionCost(float &cost, float powerRequest) = 0;
 
 protected:
-    float _maxOutputPower;  /** MW               */
-    float _minOutputPower;  /** MW               */
-    float _maxPositiveRamp; /** %maxCapacity/min */
-    float _maxNegativeRamp; /** %maxCapacity/min */
-    float _runCost;         /** $/MWh            */
+    float _maxOutputPower;  /** MW                 */
+    float _minOutputPower;  /** % Max output power */
+    float _maxPositiveRamp; /** %maxCapacity/min   */
+    float _maxNegativeRamp; /** %maxCapacity/min   */
+    float _runCost;         /** $/MWh              */
 
-    float _currPowerOutput; /** MW               */
+    float _currPowerOutput; /** MW                 */
 };
 
 

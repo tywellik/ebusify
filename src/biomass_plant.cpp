@@ -9,20 +9,12 @@ public:
     BiomassPlant(struct EnergySourceParameters const &esp);
     ~BiomassPlant();
 
-    int get_emissionsOutput(Emissions& emissions, float powerRequest) override;
+    int get_emissionsOutput(Emissions& emissions) override;
 
     int get_productionCost(float &cost, float powerRequest) override;
 
 private:
     BiomassPlant(const BiomassPlant&) = delete;
-
-    float _maxOutputPower;  /** MW               */
-    float _minOutputPower;  /** MW               */
-    float _maxPositiveRamp; /** %maxCapacity/min */
-    float _maxNegativeRamp; /** %maxCapacity/min */
-    float _runCost;         /** $/MWh            */
-
-    float _currPowerOutput; /** MW               */
 };
 
 
@@ -37,11 +29,11 @@ BiomassPlant::~BiomassPlant()
 
 
 int
-BiomassPlant::get_emissionsOutput(Emissions& emissions, float powerRequest)
+BiomassPlant::get_emissionsOutput(Emissions& emissions)
 {
-    emissions.carbonDioxide = _currPowerOutput * .099;
-    emissions.methane       = _currPowerOutput * .0001;
-    emissions.nitrousOxide  = _currPowerOutput * .0009;
+    emissions.carbonDioxide = _currPowerOutput * 0;
+    emissions.methane       = _currPowerOutput * 0;
+    emissions.nitrousOxide  = _currPowerOutput * 0;
 
     return SUCCESS;
 }
@@ -50,7 +42,7 @@ BiomassPlant::get_emissionsOutput(Emissions& emissions, float powerRequest)
 int
 BiomassPlant::get_productionCost(float &cost, float powerRequest)
 {
-    cost = powerRequest * _runCost;
+    cost = powerRequest * _runCost / 3600;
 }
 
 } // namespace NRG

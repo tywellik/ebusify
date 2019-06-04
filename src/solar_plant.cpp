@@ -9,7 +9,7 @@ public:
     SolarPlant(struct EnergySourceParameters const &esp);
     ~SolarPlant();
 
-    int get_emissionsOutput(Emissions& emissions, float powerRequest) override;
+    int get_emissionsOutput(Emissions& emissions) override;
 
     int get_productionCost(float &cost, float powerRequest) override;
 
@@ -29,11 +29,11 @@ SolarPlant::~SolarPlant()
 
 
 int
-SolarPlant::get_emissionsOutput(Emissions& emissions, float powerRequest)
+SolarPlant::get_emissionsOutput(Emissions& emissions)
 {
-    emissions.carbonDioxide = _currPowerOutput * .099;
-    emissions.methane       = _currPowerOutput * .0001;
-    emissions.nitrousOxide  = _currPowerOutput * .0009;
+    emissions.carbonDioxide = _currPowerOutput * 0;
+    emissions.methane       = _currPowerOutput * 0;
+    emissions.nitrousOxide  = _currPowerOutput * 0;
 
     return SUCCESS;
 }
@@ -42,7 +42,7 @@ SolarPlant::get_emissionsOutput(Emissions& emissions, float powerRequest)
 int
 SolarPlant::get_productionCost(float &cost, float powerRequest)
 {
-    cost = powerRequest * _runCost;
+    cost = powerRequest * _runCost / 3600;
 }
 
 } // namespace NRG

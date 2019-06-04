@@ -11,8 +11,8 @@ target_compile_definitions(Greet PRIVATE
     BOOST_NO_AUTO_PTR
 )
 
-add_library(Utility SHARED
-    src/utility.cpp
+add_library(UtilityManager SHARED
+    src/utility_manager.cpp
     src/energy_source.cpp
     src/nuclear_plant.cpp
     src/biomass_plant.cpp
@@ -22,25 +22,25 @@ add_library(Utility SHARED
     src/naturalgas_plant.cpp
     src/hydro_plant.cpp
 )
-set_target_properties(Utility
+set_target_properties(UtilityManager
     PROPERTIES POSITION_INDEPENDENT_CODE ON
     PREFIX ""
 )
-target_compile_definitions(Utility PRIVATE
+target_compile_definitions(UtilityManager PRIVATE
     BOOST_NO_AUTO_PTR
 )
 
 find_package(PythonLibs 2.7 REQUIRED)
 include_directories(${PYTHON_INCLUDE_DIRS})
 target_link_libraries(Greet ${PYTHON_LIBRARIES})
-target_link_libraries(Utility ${PYTHON_LIBRARIES})
+target_link_libraries(UtilityManager ${PYTHON_LIBRARIES})
 
 find_library(BP_LIB boost_python27 PATH /opt/boost_1_70_0/lib)
 target_link_libraries(Greet "${BP_LIB}")
-target_link_libraries(Utility "${BP_LIB}")
+target_link_libraries(UtilityManager "${BP_LIB}")
 
 find_library(BN_LIB boost_numpy27 PATH /opt/boost_1_70_0/lib)
 target_link_libraries(Greet "${BN_LIB}")
-target_link_libraries(Utility "${BN_LIB}")
+target_link_libraries(UtilityManager "${BN_LIB}")
 
 include_directories(/opt/boost_1_70_0/include)

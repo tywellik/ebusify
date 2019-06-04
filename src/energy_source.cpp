@@ -1,5 +1,9 @@
 #include "energy_source.hpp"
 
+#define LOGERR(fmt, args...)   do{ fprintf(stderr, fmt "\n", ##args); }while(0)
+#define LOGDBG(fmt, args...)   do{ fprintf(stdout, fmt "\n", ##args); }while(0)
+
+
 namespace NRG {
 
 EnergySource::EnergySource(struct EnergySourceParameters const &esp)
@@ -8,7 +12,8 @@ EnergySource::EnergySource(struct EnergySourceParameters const &esp)
     _minOutputPower(esp.minCapacity),
     _maxPositiveRamp(esp.rampRate),
     _maxNegativeRamp(esp.rampRate),
-    _runCost(esp.runCost)
+    _runCost(esp.runCost),
+    _currPowerOutput(esp.maxCapacity * esp.minCapacity)
 {}
 
 
@@ -26,7 +31,7 @@ EnergySource::get_maxOutputPower() const
 float
 EnergySource::get_minOutputPower() const
 {
-    return _minOutputPower;
+    return _maxOutputPower * (_minOutputPower / 100); // Min Output Power is a percentage of max output power
 }
 
 
@@ -44,12 +49,21 @@ EnergySource::get_maxNegativeRamp() const
 }
 
 
+float
+EnergySource::get_currPower() const
+{
+    return _currPowerOutput;
+}
+
+
 void
 EnergySource::set_powerPoint(float power)
 {
     float maxPosChange = _maxOutputPower * _maxPositiveRamp;
     float maxNegChange = _maxOutputPower * _maxNegativeRamp;
-    //std::min(std::max(,), )
+    float setPower = std::max(std::min(_currPowerOutput + maxPosChange, _currPowerOutput), _currPowerOutput - maxNegChange);
+
+    _currPowerOutput = setPower;
 }
 
 } // namespace NRG

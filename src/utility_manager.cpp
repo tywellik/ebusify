@@ -1,4 +1,8 @@
-#include "utility.hpp"
+#include "utility_manager.hpp"
+
+#define LOGERR(fmt, args...)   do{ fprintf(stderr, fmt "\n", ##args); }while(0)
+#define LOGDBG(fmt, args...)   do{ fprintf(stdout, fmt "\n", ##args); }while(0)
+
 
 namespace NRG {
 
@@ -22,7 +26,7 @@ std::vector< T > to_std_vector( const bp::object& iterable )
 }
 
 
-Utility::Utility(bp::dict const& facilities)
+UtilityManager::UtilityManager(bp::dict const& facilities)
 :
     _facilities(facilities)
 {
@@ -30,38 +34,92 @@ Utility::Utility(bp::dict const& facilities)
 }
 
 
-Utility::~Utility()
+UtilityManager::~UtilityManager()
 {
 
 }
 
 
 int
-Utility::init()
+UtilityManager::init()
 {
     int ret = convert_toSources(_facilities);
 }
 
 
 int
-Utility::power_request(float power)
+UtilityManager::power_request(float power)
 {
-    float minPower = 0.0;
-    std::cout << "Total Active Plants: " << _sources.size() << std::endl;
+    /*float minPower = 0.0;
+    LOGDBG("Total Active Plants: %zu", _sources.size());
 
     for (auto& plant : _sources)
     {
         minPower += plant->get_minOutputPower();
     }
 
-    std::cout << "Total Min Power: " << minPower << std::endl;
+    LOGDBG("Total Min Power: %.2f MW", minPower);
+    */
 
-    return 0;
+    float currPower = 0.0;
+    currPower = get_currPower();
+
+
+
+    return SUCCESS;
+}
+
+
+bp::tuple
+UtilityManager::get_totalEmissions()
+{
+    EnergySource::Emissions sourceEmissions = {
+        .carbonDioxide = 0,
+        .methane       = 0,
+        .nitrousOxide  = 0
+    };
+
+    EnergySource::Emissions totalEmissions = {
+        .carbonDioxide = 0,
+        .methane       = 0,
+        .nitrousOxide  = 0
+    };
+
+    for (auto& source : _sources)
+    {
+        source->get_emissionsOutput(sourceEmissions);
+        addEmissions(sourceEmissions, totalEmissions);
+    }
+
+    return bp::make_tuple(totalEmissions.carbonDioxide, totalEmissions.methane, totalEmissions.nitrousOxide);
+}
+
+
+void
+UtilityManager::addEmissions(EnergySource::Emissions &sourceEmissions, EnergySource::Emissions &totalEmissions)
+{
+    totalEmissions.carbonDioxide += sourceEmissions.carbonDioxide;
+    totalEmissions.methane       += sourceEmissions.methane;
+    totalEmissions.nitrousOxide  += sourceEmissions.nitrousOxide;
+}
+
+
+float
+UtilityManager::get_currPower()
+{
+    float currPower = 0.0;
+
+    for (auto& source : _sources)
+    {
+        currPower += source->get_currPower();
+    }
+
+    return currPower;
 }
 
 
 int
-Utility::convert_toSources(bp::dict const& facilities)
+UtilityManager::convert_toSources(bp::dict const& facilities)
 {
     std::vector<std::string> keys = to_std_vector<std::string>(facilities.keys());
 
@@ -109,31 +167,31 @@ Utility::convert_toSources(bp::dict const& facilities)
 
         switch( fuelType ){
         case eBIOMASS:
-            std::cout << "Creating Biomass Plant: " << key << std::endl;
+            LOGDBG("Creating Biomass Plant: %s", key.c_str());
             eSrc.reset(create_BiomassPlant(esp));
             break;
         case eCOAL:
-            std::cout << "Creating Coal Plant: " << key << std::endl;
+            LOGDBG("Creating Coal Plant: %s", key.c_str());
             eSrc.reset(create_CoalPlant(esp));
             break;
         case eHYDRO:
-            std::cout << "Creating Hydro Plant: " << key << std::endl;
+            LOGDBG("Creating Hydro Plant: %s", key.c_str());
             eSrc.reset(create_HydroPlant(esp));
             break;
         case eNATURALGAS:
-            std::cout << "Creating Natural Gas Plant: " << key << std::endl;
+            LOGDBG("Creating Natural Gas Plant: %s", key.c_str());
             eSrc.reset(create_NaturalGasPlant(esp));
             break;
         case eNUCLEAR:
-            std::cout << "Creating Nuclear Plant: " << key << std::endl;
+            LOGDBG("Creating Nuclear Plant: %s", key.c_str());
             eSrc.reset(create_NuclearPlant(esp));
             break;
         case eSOLAR:
-            std::cout << "Creating Solar Plant: " << key << std::endl;
+            LOGDBG("Creating Solar Plant: %s", key.c_str());
             eSrc.reset(create_SolarPlant(esp));
             break;
         case eWIND:
-            std::cout << "Creating Wind Plant: " << key << std::endl;
+            LOGDBG("Creating Wind Plant: %s", key.c_str());
             eSrc.reset(create_WindPlant(esp));
             break;
         default:
@@ -151,12 +209,13 @@ Utility::convert_toSources(bp::dict const& facilities)
 } /** namespace */
 
 
-BOOST_PYTHON_MODULE(Utility)
+BOOST_PYTHON_MODULE(UtilityManager)
 {
     bpn::initialize();
 
-    bp::class_<NRG::Utility>("Utility", bp::init<bp::dict>())
-        .def("init",          &NRG::Utility::init)
-        .def("power_request", &NRG::Utility::power_request)
+    bp::class_<NRG::UtilityManager>("UtilityManager", bp::init<bp::dict>())
+        .def("init",                &NRG::UtilityManager::init)
+        .def("power_request",       &NRG::UtilityManager::power_request)
+        .def("get_totalEmissions",  &NRG::UtilityManager::get_totalEmissions)
     ;
 }

@@ -9,7 +9,7 @@ public:
     WindPlant(struct EnergySourceParameters const &esp);
     ~WindPlant();
 
-    int get_emissionsOutput(Emissions& emissions, float powerRequest) override;
+    int get_emissionsOutput(Emissions& emissions) override;
 
     int get_productionCost(float &cost, float powerRequest) override;
 
@@ -29,7 +29,7 @@ WindPlant::~WindPlant()
 
 
 int
-WindPlant::get_emissionsOutput(Emissions& emissions, float powerRequest)
+WindPlant::get_emissionsOutput(Emissions& emissions)
 {
     emissions.carbonDioxide = 0;
     emissions.methane       = 0;
@@ -42,7 +42,7 @@ WindPlant::get_emissionsOutput(Emissions& emissions, float powerRequest)
 int
 WindPlant::get_productionCost(float &cost, float powerRequest)
 {
-    cost = powerRequest * _runCost;
+    cost = powerRequest * _runCost / 3600;
 }
 
 } // namespace NRG
