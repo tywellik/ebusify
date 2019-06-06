@@ -2,7 +2,7 @@ cmake_minimum_required (VERSION 3.1)
 project (ebusify)
 set (CMAKE_CXX_STANDARD 11)
 
-add_library(Greet SHARED 
+add_library(Greet SHARED
     src/hello_world.cpp
 )
 set_target_properties(Greet

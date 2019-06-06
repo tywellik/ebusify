@@ -6,6 +6,7 @@
 #include <string>
 #include <iostream>
 #include "energy_source.hpp"
+#include "gurobi_c++.h"
 #include <boost/python.hpp>
 #include <boost/python/numpy.hpp>
 #include <boost/python/stl_iterator.hpp>
@@ -18,16 +19,22 @@ namespace NRG {
 class UtilityManager 
 {
 public:
-    UtilityManager(bp::dict const& facilities);
+    UtilityManager();
     ~UtilityManager();
 
-    int init();
+    int init(bp::dict const& facilities);
+    int init(bp::dict const& facilities, bpn::ndarray const& pvProduction_MW, bpn::ndarray const& windProduction_MW);
+    int startup(float power);
     int power_request(float power);
     bp::tuple get_totalEmissions();
 
+    int register_uncontrolledSource(EnergySource* es);
+
 private:
-    bp::dict _facilities;
+    std::vector<float> _pvProduction;
+    std::vector<float> _windProduction;
     std::vector<std::shared_ptr<EnergySource>> _sources;
+    std::vector<std::shared_ptr<EnergySource>> _uncontrolledSources;
 
     void addEmissions(EnergySource::Emissions &sourceEmissions, EnergySource::Emissions &totalEmissions);
     float get_currPower();
