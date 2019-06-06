@@ -8,17 +8,32 @@ namespace NRG {
 
 EnergySource::EnergySource(struct EnergySourceParameters const &esp)
 :
+    _name(esp.name),
     _maxOutputPower(esp.maxCapacity),
     _minOutputPower(esp.minCapacity),
     _maxPositiveRamp(esp.rampRate),
     _maxNegativeRamp(esp.rampRate),
     _runCost(esp.runCost),
-    _currPowerOutput(esp.maxCapacity * esp.minCapacity)
+    _currPowerOutput(0.0)//esp.maxCapacity * esp.minCapacity)
 {}
 
 
 EnergySource::~EnergySource()
 {}
+
+
+std::string
+EnergySource::get_name() const
+{
+    return _name;
+}
+
+
+float
+EnergySource::get_powerCost() const
+{
+    return _runCost;
+}
 
 
 float

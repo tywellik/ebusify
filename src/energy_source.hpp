@@ -21,10 +21,11 @@ enum EnergyFuels {
 };
 
 struct EnergySourceParameters {
-    float maxCapacity;  /** MW                 */
-    float minCapacity;  /** % Max output power */
-    float runCost;      /** $/MWh              */
-    float rampRate;     /** %maxCapacity/min   */
+    std::string name;         /** Plant name         */
+    float       maxCapacity;  /** MW                 */
+    float       minCapacity;  /** % Max output power */
+    float       runCost;      /** $/MWh              */
+    float       rampRate;     /** %maxCapacity/min   */
 };
 
 class EnergySource
@@ -33,6 +34,8 @@ public:
     EnergySource(struct EnergySourceParameters const &esp);
     ~EnergySource();
 
+    std::string get_name() const;
+    float get_powerCost() const;
     float get_maxOutputPower() const;
     float get_minOutputPower() const;
     float get_maxPositiveRamp() const;
@@ -53,23 +56,25 @@ public:
     virtual int get_productionCost(float &cost, float powerRequest) = 0;
 
 protected:
-    float _maxOutputPower;  /** MW                 */
-    float _minOutputPower;  /** % Max output power */
-    float _maxPositiveRamp; /** %maxCapacity/min   */
-    float _maxNegativeRamp; /** %maxCapacity/min   */
-    float _runCost;         /** $/MWh              */
+    std::string _name;            /** Plant name */
+    float       _maxOutputPower;  /** MW                 */
+    float       _minOutputPower;  /** % Max output power */
+    float       _maxPositiveRamp; /** %maxCapacity/min   */
+    float       _maxNegativeRamp; /** %maxCapacity/min   */
+    float       _runCost;         /** $/MWh              */
 
-    float _currPowerOutput; /** MW                 */
+    float       _currPowerOutput; /** MW                 */
 };
 
 
+class UtilityManager; // Forward declaration
 EnergySource* create_BiomassPlant(struct EnergySourceParameters const &esp);
 EnergySource* create_CoalPlant(struct EnergySourceParameters const &esp);
 EnergySource* create_HydroPlant(struct EnergySourceParameters const &esp);
 EnergySource* create_NaturalGasPlant(struct EnergySourceParameters const &esp);
 EnergySource* create_NuclearPlant(struct EnergySourceParameters const &esp);
-EnergySource* create_SolarPlant(struct EnergySourceParameters const &esp);
-EnergySource* create_WindPlant(struct EnergySourceParameters const &esp);
+EnergySource* create_SolarPlant(UtilityManager* um, struct EnergySourceParameters const &esp);
+EnergySource* create_WindPlant(UtilityManager* um, struct EnergySourceParameters const &esp);
 
 } // namespace NRG
 

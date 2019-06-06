@@ -1,4 +1,5 @@
 #include "energy_source.hpp"
+#include "utility_manager.hpp"
 
 
 namespace NRG {
@@ -6,7 +7,7 @@ namespace NRG {
 class WindPlant : public EnergySource 
 {
 public:
-    WindPlant(struct EnergySourceParameters const &esp);
+    WindPlant(UtilityManager* um, struct EnergySourceParameters const &esp);
     ~WindPlant();
 
     int get_emissionsOutput(Emissions& emissions) override;
@@ -14,14 +15,19 @@ public:
     int get_productionCost(float &cost, float powerRequest) override;
 
 private:
+    UtilityManager* _um;
+
     WindPlant(const WindPlant&) = delete;
 };
 
 
-WindPlant::WindPlant(struct EnergySourceParameters const &esp) 
+WindPlant::WindPlant(UtilityManager* um, struct EnergySourceParameters const &esp) 
 : 
-    EnergySource::EnergySource(esp)
-{}
+    EnergySource::EnergySource(esp),
+    _um(um)
+{
+    _um->register_uncontrolledSource(this);
+}
 
 
 WindPlant::~WindPlant()
@@ -49,7 +55,7 @@ WindPlant::get_productionCost(float &cost, float powerRequest)
 
 
 NRG::EnergySource*
-NRG::create_WindPlant(NRG::EnergySourceParameters const &esp)
+NRG::create_WindPlant(UtilityManager* um, NRG::EnergySourceParameters const &esp)
 {
-    return new NRG::WindPlant(esp);
+    return new NRG::WindPlant(um, esp);
 }

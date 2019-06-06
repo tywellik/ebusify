@@ -2,7 +2,9 @@ cmake_minimum_required (VERSION 3.1)
 project (ebusify)
 set (CMAKE_CXX_STANDARD 11)
 
-add_library(Greet SHARED src/hello_world.cpp)
+add_library(Greet SHARED 
+    src/hello_world.cpp
+)
 set_target_properties(Greet
     PROPERTIES POSITION_INDEPENDENT_CODE ON
     PREFIX ""
@@ -10,6 +12,11 @@ set_target_properties(Greet
 target_compile_definitions(Greet PRIVATE
     BOOST_NO_AUTO_PTR
 )
+
+add_executable(Gurobi
+    src/gurobi_test.cpp
+)
+
 
 add_library(UtilityManager SHARED
     src/utility_manager.cpp
@@ -44,3 +51,14 @@ target_link_libraries(Greet "${BN_LIB}")
 target_link_libraries(UtilityManager "${BN_LIB}")
 
 include_directories(/opt/boost_1_70_0/include)
+
+
+find_library(GRBC_LIB gurobi_c++ PATH /opt/gurobi811/linux64/lib)
+target_link_libraries(Gurobi "${GRBC_LIB}")
+target_link_libraries(UtilityManager "${GRBC_LIB}")
+
+find_library(GRB_LIB gurobi81 PATH /opt/gurobi811/linux64/lib)
+target_link_libraries(Gurobi "${GRB_LIB}")
+target_link_libraries(UtilityManager "${GRB_LIB}")
+
+include_directories(/opt/gurobi811/linux64/include)
