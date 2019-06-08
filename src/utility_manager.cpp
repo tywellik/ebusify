@@ -42,9 +42,11 @@ UtilityManager::~UtilityManager()
 
 
 int
-UtilityManager::init(bp::dict const& facilities)
+UtilityManager::init(bpn::ndarray const& sourceName, bpn::ndarray const& sourceType, 
+                     bpn::ndarray const& maxCap, bpn::ndarray const& minCap,
+                     bpn::ndarray const& runCost, bpn::ndarray const& rampRate)
 {
-    int ret = convert_toSources(facilities);
+    int ret = convert_toSources(sourceName, sourceType, maxCap, minCap, runCost, rampRate);
     _pvProduction.push_back(0.0);
     _windProduction.push_back(920.0);
 
@@ -53,9 +55,14 @@ UtilityManager::init(bp::dict const& facilities)
 
 
 int
-UtilityManager::init(bp::dict const& facilities, bpn::ndarray const& pvProduction_MW, bpn::ndarray const& windProduction_MW)
+UtilityManager::init(bpn::ndarray const& sourceName, bpn::ndarray const& sourceType, 
+                     bpn::ndarray const& maxCap, bpn::ndarray const& minCap,
+                     bpn::ndarray const& runCost, bpn::ndarray const& rampRate, 
+                     bpn::ndarray const& pvProduction_MW, bpn::ndarray const& windProduction_MW)
 {
-    int ret = convert_toSources(facilities);
+    std::cout << "Started Init" << std::endl;
+    int ret = convert_toSources(sourceName, sourceType, maxCap, minCap, runCost, rampRate);
+    std::cout << "Converted Sources" << std::endl;
     // Sanity check on input arrays.
     bpn::ndarray const* inputArrays[] = { &pvProduction_MW, &windProduction_MW };
     for (auto arr : inputArrays) {
@@ -140,9 +147,9 @@ UtilityManager::startup(float power)
         std::fill(types_bin, types_bin + _sources.size(), GRB_BINARY);
         std::fill(types_cont, types_cont + _sources.size(), GRB_CONTINUOUS);
 
-        demand     = model.addVar(power, power, 0, GRB_CONTINUOUS, "Demand");
+        demand     = model.addVar(power, power, 1, GRB_CONTINUOUS, "Demand");
         production = model.addVars(minCapacity, maxCapacity, runCosts, types_cont, plantNames_cost, _sources.size());
-        plantOn    = model.addVars(zeros, ones, zeros, types_bin, plantNames_on, _sources.size());
+        plantOn    = model.addVars(zeros, ones, ones, types_bin, plantNames_on, _sources.size());
 
         model.set(GRB_IntAttr_ModelSense, GRB_MINIMIZE);
 
@@ -152,7 +159,7 @@ UtilityManager::startup(float power)
             powTotal += (plantOn[k] * production[k]);
         }
 
-        model.addQConstr(powTotal == demand, "DemandConstraint");
+        model.addQConstr(powTotal >= demand, "DemandConstraint");
 
         model.optimize();
         model.write("out.mst");
@@ -250,55 +257,36 @@ UtilityManager::get_currPower()
 
 
 int
-UtilityManager::convert_toSources(bp::dict const& facilities)
+UtilityManager::convert_toSources(bpn::ndarray const& sourceName, bpn::ndarray const& sourceType, 
+                                  bpn::ndarray const& maxCapacity, bpn::ndarray const& minCapacity,
+                                  bpn::ndarray const& runningCost, bpn::ndarray const& rampingRate)
 {
-    std::vector<std::string> keys = to_std_vector<std::string>(facilities.keys());
+    using std::cout;
+    using std::endl;
 
-    for (auto& key : keys)
+    unsigned int dataLen = sourceName.shape(0);
+    char const * srcName = reinterpret_cast<char const *>(sourceName.get_data());
+    char const * srcType = reinterpret_cast<char const *>(sourceType.get_data());
+    double* maxCap       = reinterpret_cast<double*>(maxCapacity.get_data());
+    double* minCap       = reinterpret_cast<double*>(minCapacity.get_data());
+    double* runCost      = reinterpret_cast<double*>(runningCost.get_data());
+    double* rampRate     = reinterpret_cast<double*>(rampingRate.get_data());    
+
+    for (int src = 0; src < dataLen; ++src)
     {
-        std::string *type;
-        std::string *name;
-        float *maxCap;
-        float *minCap;
-        float *runCost;
-        float *rampRate;
+        cout << srcName[src] << endl;
         std::shared_ptr<EnergySource> eSrc;
 
-        // @TODO: Error checking here
-        /*
-        if (arr->get_dtype() != bpn::dtype::get_builtin<double>()) {
-            PyErr_SetString(PyExc_TypeError, "Incorrect array data type");
-            bp::throw_error_already_set();
-        }
-        if (arr->get_nd() != 1) {
-            PyErr_SetString(PyExc_TypeError, "Incorrect number of dimensions");
-            bp::throw_error_already_set();
-        }
-        if ((arr->get_flags() & bpn::ndarray::C_CONTIGUOUS) == 0) {
-            PyErr_SetString(PyExc_TypeError, "Array must be row-major contiguous");
-            bp::throw_error_already_set();
-        }
-        */
-
-        bp::dict source = (bp::dict)facilities[key];
-
-        name     = new std::string(key);
-        type     = new std::string(bp::extract<std::string>(bp::str(source["type"]))());
-        maxCap   = new float(bp::extract<float>(source["MaxCap"])());
-        minCap   = new float(bp::extract<float>(source["MinCap"])());
-        runCost  = new float(bp::extract<float>(source["Running Cost"])());
-        rampRate = new float(bp::extract<float>(source["Ramp Rate"])());
-
         struct EnergySourceParameters esp = {
-            //.name        = key,
-            .name        = *name,
-            .maxCapacity = *maxCap,
-            .minCapacity = *minCap,
-            .runCost     = *runCost,
-            .rampRate    = *rampRate
+            //.name        = std::string(srcName[src]),
+            .name        = "CoalPlant",
+            .maxCapacity = (float)maxCap[src],
+            .minCapacity = (float)minCap[src],
+            .runCost     = (float)runCost[src],
+            .rampRate    = (float)rampRate[src]
         };
 
-        enum EnergyFuels fuelType = fuelStringToEnum[*type];
+        enum EnergyFuels fuelType = fuelStringToEnum["CoalPlant"];
 
         switch( fuelType ){
         case eBIOMASS:
@@ -356,12 +344,18 @@ UtilityManager::register_uncontrolledSource(EnergySource* es)
 } /** namespace */
 
 // Expose overloaded init function
-int (NRG::UtilityManager::*init)(bp::dict const&) = &NRG::UtilityManager::init;
-int (NRG::UtilityManager::*init_uc)(bp::dict const&, bpn::ndarray const&, bpn::ndarray const&) = &NRG::UtilityManager::init;
+int (NRG::UtilityManager::*init)(bpn::ndarray const&, bpn::ndarray const&, bpn::ndarray const&, 
+                                 bpn::ndarray const&, bpn::ndarray const&, bpn::ndarray const&) 
+                                 = &NRG::UtilityManager::init;
+int (NRG::UtilityManager::*init_uc)(bpn::ndarray const&, bpn::ndarray const&, bpn::ndarray const&, 
+                                    bpn::ndarray const&, bpn::ndarray const&, bpn::ndarray const&, 
+                                    bpn::ndarray const&, bpn::ndarray const&) 
+                                    = &NRG::UtilityManager::init;
 
 BOOST_PYTHON_MODULE(UtilityManager)
 {
     bpn::initialize();
+    Py_Initialize();
 
     bp::class_<NRG::UtilityManager>("UtilityManager")
         .def("init",                init)

@@ -22,8 +22,13 @@ public:
     UtilityManager();
     ~UtilityManager();
 
-    int init(bp::dict const& facilities);
-    int init(bp::dict const& facilities, bpn::ndarray const& pvProduction_MW, bpn::ndarray const& windProduction_MW);
+    int init(bpn::ndarray const& sourceName, bpn::ndarray const& sourceType, 
+             bpn::ndarray const& maxCap, bpn::ndarray const& minCap,
+             bpn::ndarray const& runCost, bpn::ndarray const& rampRate);
+    int init(bpn::ndarray const& sourceName, bpn::ndarray const& sourceType, 
+             bpn::ndarray const& maxCap, bpn::ndarray const& minCap,
+             bpn::ndarray const& runCost, bpn::ndarray const& rampRate, 
+             bpn::ndarray const& pvProduction_MW, bpn::ndarray const& windProduction_MW);
     int startup(float power);
     int power_request(float power);
     bp::tuple get_totalEmissions();
@@ -38,7 +43,9 @@ private:
 
     void addEmissions(EnergySource::Emissions &sourceEmissions, EnergySource::Emissions &totalEmissions);
     float get_currPower();
-    int convert_toSources(bp::dict const& facilities);
+    int convert_toSources(bpn::ndarray const& sourceName, bpn::ndarray const& sourceType, 
+                          bpn::ndarray const& maxCap, bpn::ndarray const& minCap,
+                          bpn::ndarray const& runCost, bpn::ndarray const& rampRate);
 };
 
 }
