@@ -46,7 +46,7 @@ EnergySource::get_maxOutputPower() const
 float
 EnergySource::get_minOutputPower() const
 {
-    return _maxOutputPower * (_minOutputPower / 100); // Min Output Power is a percentage of max output power
+    return (_maxOutputPower * (_minOutputPower / 100.0)); // Min Output Power is a percentage of max output power
 }
 
 

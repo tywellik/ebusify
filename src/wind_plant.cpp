@@ -26,7 +26,7 @@ WindPlant::WindPlant(UtilityManager* um, struct EnergySourceParameters const &es
     EnergySource::EnergySource(esp),
     _um(um)
 {
-    _um->register_uncontrolledSource(this);
+    _um->register_uncontrolledSource(get_name());
 }
 
 

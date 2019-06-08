@@ -1,5 +1,6 @@
 #include "utility_manager.hpp"
 
+//#define VERBOSE 1
 #define LOGERR(fmt, args...)   do{ fprintf(stderr, fmt "\n", ##args); }while(0)
 #ifdef VERBOSE
     #define LOGDBG(fmt, args...)   do{ fprintf(stdout, fmt "\n", ##args); }while(0)
@@ -46,10 +47,10 @@ UtilityManager::init(bpn::ndarray const& sourceName, bpn::ndarray const& sourceT
                      bpn::ndarray const& maxCap, bpn::ndarray const& minCap,
                      bpn::ndarray const& runCost, bpn::ndarray const& rampRate)
 {
+    std::cout << "POOP!!!" << std::endl;
     int ret = convert_toSources(sourceName, sourceType, maxCap, minCap, runCost, rampRate);
     _pvProduction.push_back(0.0);
     _windProduction.push_back(920.0);
-
     return ret;
 }
 
@@ -60,9 +61,8 @@ UtilityManager::init(bpn::ndarray const& sourceName, bpn::ndarray const& sourceT
                      bpn::ndarray const& runCost, bpn::ndarray const& rampRate, 
                      bpn::ndarray const& pvProduction_MW, bpn::ndarray const& windProduction_MW)
 {
-    std::cout << "Started Init" << std::endl;
     int ret = convert_toSources(sourceName, sourceType, maxCap, minCap, runCost, rampRate);
-    std::cout << "Converted Sources" << std::endl;
+
     // Sanity check on input arrays.
     bpn::ndarray const* inputArrays[] = { &pvProduction_MW, &windProduction_MW };
     for (auto arr : inputArrays) {
@@ -82,11 +82,10 @@ UtilityManager::init(bpn::ndarray const& sourceName, bpn::ndarray const& sourceT
     }
 
     unsigned int dataLen = pvProduction_MW.shape(0);
-    float* pvProd = reinterpret_cast<float*>(pvProduction_MW.get_data());
-    _pvProduction.assign(pvProd, pvProd + dataLen);
-    float* windProd = reinterpret_cast<float*>(windProduction_MW.get_data());
-    _windProduction.assign(windProd, windProd + dataLen);
-
+    //float* pvProd = reinterpret_cast<float*>(pvProduction_MW.get_data());
+    //_pvProduction.assign(pvProd, pvProd + dataLen);
+    //float* windProd = reinterpret_cast<float*>(windProduction_MW.get_data());
+    //_windProduction.assign(windProd, windProd + dataLen);
     return ret;
 }
 
@@ -97,45 +96,50 @@ UtilityManager::startup(float power)
     using std::cout;
     using std::endl;
 
-    std::string name;
-    for (auto& us : _uncontrolledSources)
-    {
-        name = us->get_name();
-        if (name.compare("Wind (aggregated) - base case") == 0){
-            us->set_powerPoint(_windProduction.front());
-        }
-        if (name.compare("Solar (aggregated) - base case") == 0){
-            us->set_powerPoint(_pvProduction.front());
-        }
-    }
-
-
     // Model
     GRBEnv* env        = 0;
     GRBVar* production = 0;
     GRBVar* plantOn    = 0;
-    GRBVar demand;
-    
     try
     {
         // Model
         env = new GRBEnv();
-        //GRBModel model = GRBModel(*env);
         GRBModel model = GRBModel(*env);
+        env->set(GRB_IntParam_OutputFlag, 0);        
         model.set(GRB_StringAttr_ModelName, "startup");
 
-        std::string plantNames_cost[_sources.size()];
+        std::string plantNames_prod[_sources.size()];
         std::string plantNames_on[_sources.size()];
         double      runCosts[_sources.size()];
         double      minCapacity[_sources.size()];
         double      maxCapacity[_sources.size()];
         for (int src = 0; src < _sources.size(); ++src)
         {
-            plantNames_cost[src]  = _sources[src]->get_name() + "_cost";
+            plantNames_prod[src]  = _sources[src]->get_name() + "_cost";
             plantNames_on[src]    = _sources[src]->get_name() + "_on";
             runCosts[src]         = _sources[src]->get_powerCost();
-            minCapacity[src]      = _sources[src]->get_minOutputPower() * _sources[src]->get_maxOutputPower();
+            minCapacity[src]      = _sources[src]->get_minOutputPower();
             maxCapacity[src]      = _sources[src]->get_maxOutputPower();
+        }
+        for (auto& src: _sourceNames)
+        {
+            plantNames_prod[src]  = _sources[src]->get_name() + "_cost";
+            plantNames_on[src]    = _sources[src]->get_name() + "_on";
+            runCosts[src]         = _sources[src]->get_powerCost();
+            minCapacity[src]      = _sources[src]->get_minOutputPower();
+            maxCapacity[src]      = _sources[src]->get_maxOutputPower();
+        }
+        
+        std::string name;
+        for (auto& ucSrc : _ucSourceNames)
+        {
+            _sources[ucSrc];
+            if (name.compare("Wind (aggregated) - base case") == 0){
+                us->set_powerPoint(_windProduction.front());
+            }
+            if (name.compare("Solar (aggregated) - base case") == 0){
+                us->set_powerPoint(_pvProduction.front());
+            }
         }
 
         double zeros[_sources.size()];
@@ -147,29 +151,66 @@ UtilityManager::startup(float power)
         std::fill(types_bin, types_bin + _sources.size(), GRB_BINARY);
         std::fill(types_cont, types_cont + _sources.size(), GRB_CONTINUOUS);
 
-        demand     = model.addVar(power, power, 1, GRB_CONTINUOUS, "Demand");
-        production = model.addVars(minCapacity, maxCapacity, runCosts, types_cont, plantNames_cost, _sources.size());
+        production = model.addVars(minCapacity, maxCapacity, ones, types_cont, plantNames_prod, _sources.size());
         plantOn    = model.addVars(zeros, ones, ones, types_bin, plantNames_on, _sources.size());
 
-        model.set(GRB_IntAttr_ModelSense, GRB_MINIMIZE);
-
-        GRBQuadExpr powTotal = 0;
+        GRBQuadExpr costTotal = 0;
         for (int k=0; k < _sources.size(); ++k)
         {
-            powTotal += (plantOn[k] * production[k]);
+            costTotal += (runCosts[k] * production[k] * plantOn[k]);
         }
+        model.setObjective(costTotal, GRB_MINIMIZE);
 
-        model.addQConstr(powTotal >= demand, "DemandConstraint");
-
-        model.optimize();
-        model.write("out.mst");
-
-        for (int src = 0; src < _sources.size(); ++src)
+        GRBQuadExpr proTotal = 0;
+        for (int k=0; k < _sources.size(); ++k)
         {
-            cout << _sources[src]->get_name() << endl;
-            cout << plantOn[src].get(GRB_DoubleAttr_ObjVal) << endl;
-            cout << production[src].get(GRB_DoubleAttr_ObjVal) << endl << endl;
+            proTotal += production[k] * plantOn[k];
+            model.addConstr((production[k] - maxCapacity[k]) <= 0,              "NoOverProd" + std::to_string(k));
+            model.addConstr((production[k] - minCapacity[k] * plantOn[k]) >= 0, "OffOrGtMinCap" + std::to_string(k));
+            model.addConstr( production[k] >= 0,                                "ProdGtEZ" + std::to_string(k));
         }
+        model.addQConstr(proTotal == power, "DemandConstraint");
+        
+        // First, open all plants
+        for (int k = 0; k < _sources.size(); ++k)
+        {
+            if (k % 2)
+                plantOn[k].set(GRB_DoubleAttr_Start, 0.0);
+            else
+                plantOn[k].set(GRB_DoubleAttr_Start, 1.0);
+        }
+
+        model.update();
+        model.optimize();
+        //model.write("test.mps");
+        //model.write("test.prm");
+        //model.write("test.mst");
+
+        double totalPower = 0.0;
+        cout << "\nTOTAL COSTS: " << model.get(GRB_DoubleAttr_ObjVal) << endl;
+        cout << "SOLUTION:" << endl;
+        for (int k = 0; k < _sources.size(); ++k)
+        {
+            if (plantOn[k].get(GRB_DoubleAttr_X) > 0.99)
+            {
+                if (production[k].get(GRB_DoubleAttr_X) < 0.01)
+                    cout << "Plant " << k << " closed!" << endl;
+                else
+                {
+                    cout << "Plant " << k << " open and producing: \t"
+                         << production[k].get(GRB_DoubleAttr_X) << " MW.   \t (" 
+                         << 100*production[k].get(GRB_DoubleAttr_X)/_sources[k]->get_maxOutputPower()
+                         << "% utilization)" << "\t Plant: " << _sources[k]->get_name() << endl;
+                    totalPower += production[k].get(GRB_DoubleAttr_X);
+                }
+            }
+            else
+            {
+                cout << "Plant " << k << " closed!" << endl;
+            }
+        }
+
+        cout << "Total Power Produced: " << totalPower << endl;
     }
     catch (GRBException e)
     {
@@ -265,28 +306,34 @@ UtilityManager::convert_toSources(bpn::ndarray const& sourceName, bpn::ndarray c
     using std::endl;
 
     unsigned int dataLen = sourceName.shape(0);
-    char const * srcName = reinterpret_cast<char const *>(sourceName.get_data());
-    char const * srcType = reinterpret_cast<char const *>(sourceType.get_data());
     double* maxCap       = reinterpret_cast<double*>(maxCapacity.get_data());
     double* minCap       = reinterpret_cast<double*>(minCapacity.get_data());
     double* runCost      = reinterpret_cast<double*>(runningCost.get_data());
     double* rampRate     = reinterpret_cast<double*>(rampingRate.get_data());    
 
+
     for (int src = 0; src < dataLen; ++src)
     {
-        cout << srcName[src] << endl;
         std::shared_ptr<EnergySource> eSrc;
+        std::string name = std::string(bp::extract<char const *>(sourceName[src]));
+        std::string type = std::string(bp::extract<char const *>(sourceType[src]));
+        
+        // Remove spaces in names
+        std::transform(name.begin(), name.end(), name.begin(), [](char ch) {
+            return ch == ' ' ? '_' : ch;
+        });
+        std::transform(type.begin(), type.end(), type.begin(), [](char ch) {
+            return ch == ' ' ? '_' : ch;
+        });
 
         struct EnergySourceParameters esp = {
-            //.name        = std::string(srcName[src]),
-            .name        = "CoalPlant",
+            .name        = name,
             .maxCapacity = (float)maxCap[src],
             .minCapacity = (float)minCap[src],
             .runCost     = (float)runCost[src],
             .rampRate    = (float)rampRate[src]
         };
-
-        enum EnergyFuels fuelType = fuelStringToEnum["CoalPlant"];
+        enum EnergyFuels fuelType = fuelStringToEnum[type];
 
         switch( fuelType ){
         case eBIOMASS:
@@ -321,21 +368,19 @@ UtilityManager::convert_toSources(bpn::ndarray const& sourceName, bpn::ndarray c
             PyErr_SetString(PyExc_TypeError, "Facility Type is not supported");
             bp::throw_error_already_set();
         }
-
-        _sources.push_back(eSrc); // Add new plant to list of plants
+        
+        _sources.insert(std::pair<std::string, std::shared_ptr<EnergySource>>(name, eSrc)); 
+        //_sources.push_back(eSrc); // Add new plant to list of plants
     }
-
     return SUCCESS;
 }
 
 
 
 int
-UtilityManager::register_uncontrolledSource(EnergySource* es)
+UtilityManager::register_uncontrolledSource(std::string src)
 {
-    std::shared_ptr<EnergySource> eSrc;
-    eSrc.reset(es);
-    _uncontrolledSources.push_back(eSrc);
+    _ucSourceNames.push_back(src);
 
     return SUCCESS;
 }
