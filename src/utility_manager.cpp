@@ -1,6 +1,8 @@
 #include "utility_manager.hpp"
+#include <sstream>
+#include <iomanip>
 
-//#define VERBOSE 1
+//#define VERBOSE
 #define LOGERR(fmt, args...)   do{ fprintf(stderr, fmt "\n", ##args); }while(0)
 #ifdef VERBOSE
     #define LOGDBG(fmt, args...)   do{ fprintf(stdout, fmt "\n", ##args); }while(0)
@@ -79,7 +81,6 @@ UtilityManager::init(bpn::ndarray const& sourceName, bpn::ndarray const& sourceT
             bp::throw_error_already_set();
         }
         assert(arr->strides(0) == sizeof(float));
-        std::cout << "All good" << std::endl;
     }
 
     unsigned int dataLen = pvProduction_MW.shape(0);
@@ -116,7 +117,7 @@ UtilityManager::startup(float power)
         // Model
         env = new GRBEnv();
         GRBModel model = GRBModel(*env);
-        //env->set(GRB_IntParam_OutputFlag, 0);        
+        env->set(GRB_IntParam_OutputFlag, 0);        
         model.set(GRB_StringAttr_ModelName, "startup");
 
         int numSources = _sources.size();
@@ -141,16 +142,14 @@ UtilityManager::startup(float power)
             k++;
         }
         
-        cout << "Iterating through uncontrolled sources:" << endl;
         for (auto& ucSrc : _ucSourceNames)
         {
-            cout << ucSrc << endl;
             if (ucSrc.compare("Wind_(aggregated)_-_base_case") == 0){
-                cout << "Setting max wind to:  " << _windProduction.front();
+                LOGDBG("Setting max wind to:  %f", _windProduction.front());
                 maxCapacity[arrayLoc[ucSrc]] = _windProduction.front();
             }
             if (ucSrc.compare("Solar_(aggregated)_-_base_case") == 0){
-                cout << "Setting max solar to: " << _pvProduction.front();
+                LOGDBG("Setting max solar to: %f", _pvProduction.front());
                 maxCapacity[arrayLoc[ucSrc]] = _pvProduction.front();
             }
         }
@@ -178,9 +177,9 @@ UtilityManager::startup(float power)
         for (k=0; k < numSources; ++k)
         {
             proTotal += production[k] * plantOn[k];
-            model.addConstr((production[k] - maxCapacity[k]) <= 0,              "NoOverProd" + std::to_string(k));
-            model.addConstr((production[k] - minCapacity[k] * plantOn[k]) >= 0, "OffOrGtMinCap" + std::to_string(k));
-            model.addConstr( production[k] >= 0,                                "ProdGtEZ" + std::to_string(k));
+            model.addConstr((production[k] - maxCapacity[k]) <= 0,              plantNames[k] + "_NoOverProd");
+            model.addConstr((production[k] - minCapacity[k] * plantOn[k]) >= 0, plantNames[k] + "_OffOrGtMinCap");
+            model.addConstr( production[k] >= 0,                                plantNames[k] + "_ProdGtEZ");
         }
         model.addQConstr(proTotal == power, "DemandConstraint");
         
@@ -197,39 +196,40 @@ UtilityManager::startup(float power)
         //model.write("test.mst");
 
         double totalPower = 0.0;
-        cout << "\nTOTAL COSTS: " << model.get(GRB_DoubleAttr_ObjVal) << endl;
-        cout << "SOLUTION:" << endl;
+        LOGDBG("TOTAL COSTS: %f", model.get(GRB_DoubleAttr_ObjVal));
+        LOGDBG("SOLUTION:");
         for (k = 0; k < numSources; ++k)
         {
+            std::stringstream ss;
             if (plantOn[k].get(GRB_DoubleAttr_X) > 0.99)
             {
-                if (production[k].get(GRB_DoubleAttr_X) < 0.01)
-                    cout << "Plant " << k << " closed!" << endl;
-                else
-                {
-                    cout << "Plant " << k << " open and producing: \t"
-                         << production[k].get(GRB_DoubleAttr_X) << " MW.   \t (" 
-                         << 100*production[k].get(GRB_DoubleAttr_X)/maxCapacity[k]
-                         << "% utilization)" << "\t Plant: " << plantNames[k] << endl;
-                    totalPower += production[k].get(GRB_DoubleAttr_X);
-                }
+                ss << std::left << std::setw(40)
+                   << plantNames[k].c_str() << " open and producing: "
+                   << std::fixed << std::setprecision(2)
+                   << production[k].get(GRB_DoubleAttr_X) << "MW ("
+                   << 100*production[k].get(GRB_DoubleAttr_X)/maxCapacity[k]
+                   << "% Cap Factor)";
+                
+
+                totalPower += production[k].get(GRB_DoubleAttr_X);
             }
             else
             {
-                cout << "Plant " << k << " closed!" << endl;
+                ss << std::left << std::setw(40) << plantNames[k].c_str() 
+                   << " closed";
             }
+            LOGDBG("%s", ss.str().c_str());
         }
 
-        cout << "Total Power Produced: " << totalPower << endl;
+        LOGDBG("Total Power Produced: %.2f", totalPower);
     }
     catch (GRBException e)
     {
-        cout << "Error code = " << e.getErrorCode() << endl;
-        cout << e.getMessage() << endl;
+        LOGERR("Error code = %i: %s", e.getErrorCode(), e.getMessage().c_str());
     }
     catch (...)
     {
-        cout << "Exception during optimization" << endl;
+        LOGERR("Exception during optimization");
     }
 
     return SUCCESS;
@@ -347,31 +347,31 @@ UtilityManager::convert_toSources(bpn::ndarray const& sourceName, bpn::ndarray c
 
         switch( fuelType ){
         case eBIOMASS:
-            LOGDBG("Creating Biomass Plant: %s", key.c_str());
+            LOGDBG("Creating Biomass Plant: %s", name.c_str());
             eSrc.reset(create_BiomassPlant(esp));
             break;
         case eCOAL:
-            LOGDBG("Creating Coal Plant: %s", key.c_str());
+            LOGDBG("Creating Coal Plant: %s", name.c_str());
             eSrc.reset(create_CoalPlant(esp));
             break;
         case eHYDRO:
-            LOGDBG("Creating Hydro Plant: %s", key.c_str());
+            LOGDBG("Creating Hydro Plant: %s", name.c_str());
             eSrc.reset(create_HydroPlant(esp));
             break;
         case eNATURALGAS:
-            LOGDBG("Creating Natural Gas Plant: %s", key.c_str());
+            LOGDBG("Creating Natural Gas Plant: %s", name.c_str());
             eSrc.reset(create_NaturalGasPlant(esp));
             break;
         case eNUCLEAR:
-            LOGDBG("Creating Nuclear Plant: %s", key.c_str());
+            LOGDBG("Creating Nuclear Plant: %s", name.c_str());
             eSrc.reset(create_NuclearPlant(esp));
             break;
         case eSOLAR:
-            LOGDBG("Creating Solar Plant: %s", key.c_str());
+            LOGDBG("Creating Solar Plant: %s", name.c_str());
             eSrc.reset(create_SolarPlant(this, esp));
             break;
         case eWIND:
-            LOGDBG("Creating Wind Plant: %s", key.c_str());
+            LOGDBG("Creating Wind Plant: %s", name.c_str());
             eSrc.reset(create_WindPlant(this, esp));
             break;
         default:
@@ -381,7 +381,6 @@ UtilityManager::convert_toSources(bpn::ndarray const& sourceName, bpn::ndarray c
 
         _sourceNames.push_back(name);
         _sources.insert(std::pair<std::string, std::shared_ptr<EnergySource>>(name, eSrc)); 
-        //_sources.push_back(eSrc); // Add new plant to list of plants
     }
     return SUCCESS;
 }
