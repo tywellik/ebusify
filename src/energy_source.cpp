@@ -1,9 +1,5 @@
 #include "energy_source.hpp"
 
-#define LOGERR(fmt, args...)   do{ fprintf(stderr, fmt "\n", ##args); }while(0)
-#define LOGDBG(fmt, args...)   do{ fprintf(stdout, fmt "\n", ##args); }while(0)
-
-
 namespace NRG {
 
 EnergySource::EnergySource(struct EnergySourceParameters const &esp)
@@ -29,42 +25,42 @@ EnergySource::get_name() const
 }
 
 
-float
+double
 EnergySource::get_powerCost() const
 {
     return _runCost;
 }
 
 
-float
+double
 EnergySource::get_maxOutputPower() const
 {
     return _maxOutputPower;
 }
 
 
-float
+double
 EnergySource::get_minOutputPower() const
 {
     return (_maxOutputPower * (_minOutputPower / 100.0)); // Min Output Power is a percentage of max output power
 }
 
 
-float
+double
 EnergySource::get_maxPositiveRamp() const
 {
     return _maxPositiveRamp;
 }
 
 
-float
+double
 EnergySource::get_maxNegativeRamp() const
 {
     return _maxNegativeRamp;
 }
 
 
-float
+double
 EnergySource::get_currPower() const
 {
     return _currPowerOutput;
@@ -72,11 +68,11 @@ EnergySource::get_currPower() const
 
 
 void
-EnergySource::set_powerPoint(float power)
+EnergySource::set_powerPoint(double power)
 {
-    float maxPosChange = _maxOutputPower * _maxPositiveRamp;
-    float maxNegChange = _maxOutputPower * _maxNegativeRamp;
-    float setPower = std::max(std::min(_currPowerOutput + maxPosChange, _currPowerOutput), _currPowerOutput - maxNegChange);
+    double maxPosChange = _maxOutputPower * _maxPositiveRamp;
+    double maxNegChange = _maxOutputPower * _maxNegativeRamp;
+    double setPower = std::max(std::min(_currPowerOutput + maxPosChange, _currPowerOutput), _currPowerOutput - maxNegChange);
 
     _currPowerOutput = setPower;
 }

@@ -22,10 +22,10 @@ enum EnergyFuels {
 
 struct EnergySourceParameters {
     std::string name;         /** Plant name         */
-    float       maxCapacity;  /** MW                 */
-    float       minCapacity;  /** % Max output power */
-    float       runCost;      /** $/MWh              */
-    float       rampRate;     /** %maxCapacity/min   */
+    double       maxCapacity;  /** MW                 */
+    double       minCapacity;  /** % Max output power */
+    double       runCost;      /** $/MWh              */
+    double       rampRate;     /** %maxCapacity/min   */
 };
 
 class EnergySource
@@ -35,35 +35,35 @@ public:
     ~EnergySource();
 
     std::string get_name() const;
-    float get_powerCost() const;
-    float get_maxOutputPower() const;
-    float get_minOutputPower() const;
-    float get_maxPositiveRamp() const;
-    float get_maxNegativeRamp() const;
-    float get_currPower() const;
+    double get_powerCost() const;
+    double get_maxOutputPower() const;
+    double get_minOutputPower() const;
+    double get_maxPositiveRamp() const;
+    double get_maxNegativeRamp() const;
+    double get_currPower() const;
 
-    void set_powerPoint(float power);
+    void set_powerPoint(double power);
 
     struct Emissions {
-        float carbonDioxide;
-        float methane;
-        float nitrousOxide;
+        double carbonDioxide;
+        double methane;
+        double nitrousOxide;
         // Add more as necessary
     };
 
     virtual int get_emissionsOutput(Emissions& emissions) = 0;
 
-    virtual int get_productionCost(float &cost, float powerRequest) = 0;
+    virtual int get_productionCost(double &cost, double powerRequest) = 0;
 
 protected:
     std::string _name;            /** Plant name */
-    float       _maxOutputPower;  /** MW                 */
-    float       _minOutputPower;  /** % Max output power */
-    float       _maxPositiveRamp; /** %maxCapacity/min   */
-    float       _maxNegativeRamp; /** %maxCapacity/min   */
-    float       _runCost;         /** $/MWh              */
+    double      _maxOutputPower;  /** MW                 */
+    double      _minOutputPower;  /** % Max output power */
+    double      _maxPositiveRamp; /** %maxCapacity/min   */
+    double      _maxNegativeRamp; /** %maxCapacity/min   */
+    double      _runCost;         /** $/MWh              */
 
-    float       _currPowerOutput; /** MW                 */
+    double      _currPowerOutput; /** MW                 */
 };
 
 

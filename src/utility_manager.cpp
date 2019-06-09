@@ -2,7 +2,7 @@
 #include <sstream>
 #include <iomanip>
 
-//#define VERBOSE
+#define VERBOSE
 #define LOGERR(fmt, args...)   do{ fprintf(stderr, fmt "\n", ##args); }while(0)
 #ifdef VERBOSE
     #define LOGDBG(fmt, args...)   do{ fprintf(stdout, fmt "\n", ##args); }while(0)
@@ -49,10 +49,7 @@ UtilityManager::init(bpn::ndarray const& sourceName, bpn::ndarray const& sourceT
                      bpn::ndarray const& maxCap, bpn::ndarray const& minCap,
                      bpn::ndarray const& runCost, bpn::ndarray const& rampRate)
 {
-    std::cout << "POOP!!!" << std::endl;
     int ret = convert_toSources(sourceName, sourceType, maxCap, minCap, runCost, rampRate);
-    _pvProduction.push_back(0.0);
-    _windProduction.push_back(920.0);
     return ret;
 }
 
@@ -68,7 +65,7 @@ UtilityManager::init(bpn::ndarray const& sourceName, bpn::ndarray const& sourceT
     // Sanity check on input arrays.
     bpn::ndarray const* inputArrays[] = { &pvProduction_MW, &windProduction_MW };
     for (auto arr : inputArrays) {
-        if (arr->get_dtype() != bpn::dtype::get_builtin<float>()) {
+        if (arr->get_dtype() != bpn::dtype::get_builtin<double>()) {
             PyErr_SetString(PyExc_TypeError, "Incorrect array data type");
             bp::throw_error_already_set();
         }
@@ -80,7 +77,7 @@ UtilityManager::init(bpn::ndarray const& sourceName, bpn::ndarray const& sourceT
             PyErr_SetString(PyExc_TypeError, "Array must be row-major contiguous");
             bp::throw_error_already_set();
         }
-        assert(arr->strides(0) == sizeof(float));
+        assert(arr->strides(0) == sizeof(double));
     }
 
     unsigned int dataLen = pvProduction_MW.shape(0);
@@ -89,70 +86,147 @@ UtilityManager::init(bpn::ndarray const& sourceName, bpn::ndarray const& sourceT
         bp::throw_error_already_set();
     }
 
-    float* pvProd   = reinterpret_cast<float*>(pvProduction_MW.get_data());
-    float* windProd = reinterpret_cast<float*>(windProduction_MW.get_data());
-
-    //float pvProd[dataLen];
-    //float windProd[dataLen];
-    //&pvProd[0]   = reinterpret_cast<float*>(pvProduction_MW.get_data());
-    //&windProd[0] = reinterpret_cast<float*>(windProduction_MW.get_data());
+    double* pvProd   = reinterpret_cast<double*>(pvProduction_MW.get_data());
+    double* windProd = reinterpret_cast<double*>(windProduction_MW.get_data());
     _pvProduction.assign(pvProd, pvProd + dataLen);
     _windProduction.assign(windProd, windProd + dataLen);
+
     return ret;
 }
 
 
 int
-UtilityManager::startup(float power)
+UtilityManager::startup(double demandPower)
 {
-    using std::cout;
-    using std::endl;
+    int numSources = _sources.size();
+    std::map<std::string, int> arrayLoc;
+    std::string plantNames[numSources];
+    std::string plantNames_on[numSources];
+    std::string plantNames_prod[numSources];
+    double      runCosts[numSources];
+    double      minCapacity[numSources];
+    double      maxCapacity[numSources];
+
+    int k=0;
+    for (auto& src: _sourceNames)
+    {
+        plantNames[k]       = src;
+        plantNames_on[k]    = src + "_on";
+        plantNames_prod[k]  = src + "_cost";
+        runCosts[k]         = _sources[src]->get_powerCost();
+        minCapacity[k]      = _sources[src]->get_minOutputPower();
+        maxCapacity[k]      = _sources[src]->get_maxOutputPower();
+        arrayLoc.insert(std::pair<std::string, int>(src, k)); 
+        k++;
+    }
+    
+    for (auto& ucSrc : _ucSourceNames)
+    {
+        if (ucSrc.compare("Wind_(aggregated)_-_base_case") == 0){
+            LOGDBG("Setting max wind to:  %f", _windProduction.front());
+            maxCapacity[arrayLoc[ucSrc]] = _windProduction.front();
+        }
+        if (ucSrc.compare("Solar_(aggregated)_-_base_case") == 0){
+            LOGDBG("Setting max solar to: %f", _pvProduction.front());
+            maxCapacity[arrayLoc[ucSrc]] = _pvProduction.front();
+        }
+    }
+
+    int ret = run_optimization(numSources, runCosts, minCapacity, maxCapacity,
+                                plantNames, plantNames_on, plantNames_prod,
+                                arrayLoc, demandPower);
+
+    return ret;
+}
+
+
+int
+UtilityManager::power_request(double demandPower)
+{
+    int numSources = _sources.size();
+    std::map<std::string, int> arrayLoc;
+    std::string plantNames[numSources];
+    std::string plantNames_on[numSources];
+    std::string plantNames_prod[numSources];
+    double      runCosts[numSources];
+    double      minCapacity[numSources];
+    double      maxCapacity[numSources];
+
+    int k=0;
+    for (auto& src: _sourceNames)
+    {
+        plantNames[k]       = src;
+        plantNames_on[k]    = src + "_on";
+        plantNames_prod[k]  = src + "_cost";
+        runCosts[k]         = _sources[src]->get_powerCost();
+        minCapacity[k]      = _sources[src]->get_minOutputPower();
+        maxCapacity[k]      = _sources[src]->get_maxOutputPower();
+        arrayLoc.insert(std::pair<std::string, int>(src, k)); 
+        k++;
+    }
+    
+    for (auto& ucSrc : _ucSourceNames)
+    {
+        if (ucSrc.compare("Wind_(aggregated)_-_base_case") == 0){
+            LOGDBG("Setting max wind to:  %f", _windProduction.front());
+            maxCapacity[arrayLoc[ucSrc]] = _windProduction.front();
+        }
+        if (ucSrc.compare("Solar_(aggregated)_-_base_case") == 0){
+            LOGDBG("Setting max solar to: %f", _pvProduction.front());
+            maxCapacity[arrayLoc[ucSrc]] = _pvProduction.front();
+        }
+    }
+
+    int ret = run_optimization(numSources, runCosts, minCapacity, maxCapacity,
+                                plantNames, plantNames_on, plantNames_prod,
+                                arrayLoc, demandPower);
+
+    return ret;
+}
+
+
+bp::tuple
+UtilityManager::get_totalEmissions()
+{
+    EnergySource::Emissions sourceEmissions = {
+        .carbonDioxide = 0,
+        .methane       = 0,
+        .nitrousOxide  = 0
+    };
+
+    EnergySource::Emissions totalEmissions = {
+        .carbonDioxide = 0,
+        .methane       = 0,
+        .nitrousOxide  = 0
+    };
+
+    for (auto& src: _sourceNames)
+    {
+        _sources[src]->get_emissionsOutput(sourceEmissions);
+        add_emissions(sourceEmissions, totalEmissions);
+    }
+
+    return bp::make_tuple(totalEmissions.carbonDioxide, totalEmissions.methane, totalEmissions.nitrousOxide);
+}
+
+
+int
+UtilityManager::run_optimization(int numSources, double* runCosts, double* minCapacity, double* maxCapacity,
+                                 std::string* plantNames, std::string* plantNames_on, std::string* plantNames_prod,
+                                 std::map<std::string, int> arrayLoc, double demandPower)
+{
+    int k, optSuccess;
 
     // Model
     GRBEnv* env        = 0;
     GRBVar* production = 0;
     GRBVar* plantOn    = 0;
-    try
-    {
+    try {
         // Model
         env = new GRBEnv();
         GRBModel model = GRBModel(*env);
         env->set(GRB_IntParam_OutputFlag, 0);        
         model.set(GRB_StringAttr_ModelName, "startup");
-
-        int numSources = _sources.size();
-        std::map<std::string, int> arrayLoc;
-        std::string plantNames[numSources];
-        std::string plantNames_on[numSources];
-        std::string plantNames_prod[numSources];
-        double      runCosts[numSources];
-        double      minCapacity[numSources];
-        double      maxCapacity[numSources];
-
-        int k=0;
-        for (auto& src: _sourceNames)
-        {
-            plantNames[k]       = src;
-            plantNames_on[k]    = src + "_on";
-            plantNames_prod[k]  = src + "_cost";
-            runCosts[k]         = _sources[src]->get_powerCost();
-            minCapacity[k]      = _sources[src]->get_minOutputPower();
-            maxCapacity[k]      = _sources[src]->get_maxOutputPower();
-            arrayLoc.insert(std::pair<std::string, int>(src, k)); 
-            k++;
-        }
-        
-        for (auto& ucSrc : _ucSourceNames)
-        {
-            if (ucSrc.compare("Wind_(aggregated)_-_base_case") == 0){
-                LOGDBG("Setting max wind to:  %f", _windProduction.front());
-                maxCapacity[arrayLoc[ucSrc]] = _windProduction.front();
-            }
-            if (ucSrc.compare("Solar_(aggregated)_-_base_case") == 0){
-                LOGDBG("Setting max solar to: %f", _pvProduction.front());
-                maxCapacity[arrayLoc[ucSrc]] = _pvProduction.front();
-            }
-        }
         
         double zeros[numSources];
         double ones[numSources];
@@ -181,7 +255,7 @@ UtilityManager::startup(float power)
             model.addConstr((production[k] - minCapacity[k] * plantOn[k]) >= 0, plantNames[k] + "_OffOrGtMinCap");
             model.addConstr( production[k] >= 0,                                plantNames[k] + "_ProdGtEZ");
         }
-        model.addQConstr(proTotal == power, "DemandConstraint");
+        model.addQConstr(proTotal == demandPower, "DemandConstraint");
         
         // First, close all plants
         for (k = 0; k < numSources; ++k)
@@ -232,60 +306,12 @@ UtilityManager::startup(float power)
         LOGERR("Exception during optimization");
     }
 
-    return SUCCESS;
-}
-
-
-int
-UtilityManager::power_request(float power)
-{
-    /*float minPower = 0.0;
-    LOGDBG("Total Active Plants: %zu", _sources.size());
-
-    for (auto& plant : _sources)
-    {
-        minPower += plant->get_minOutputPower();
-    }
-
-    LOGDBG("Total Min Power: %.2f MW", minPower);
-    */
-
-    float currPower = 0.0;
-    currPower = get_currPower();
-
-
-
-    return SUCCESS;
-}
-
-
-bp::tuple
-UtilityManager::get_totalEmissions()
-{
-    EnergySource::Emissions sourceEmissions = {
-        .carbonDioxide = 0,
-        .methane       = 0,
-        .nitrousOxide  = 0
-    };
-
-    EnergySource::Emissions totalEmissions = {
-        .carbonDioxide = 0,
-        .methane       = 0,
-        .nitrousOxide  = 0
-    };
-
-    for (auto& src: _sourceNames)
-    {
-        _sources[src]->get_emissionsOutput(sourceEmissions);
-        addEmissions(sourceEmissions, totalEmissions);
-    }
-
-    return bp::make_tuple(totalEmissions.carbonDioxide, totalEmissions.methane, totalEmissions.nitrousOxide);
+    return optSuccess;
 }
 
 
 void
-UtilityManager::addEmissions(EnergySource::Emissions &sourceEmissions, EnergySource::Emissions &totalEmissions)
+UtilityManager::add_emissions(EnergySource::Emissions &sourceEmissions, EnergySource::Emissions &totalEmissions)
 {
     totalEmissions.carbonDioxide += sourceEmissions.carbonDioxide;
     totalEmissions.methane       += sourceEmissions.methane;
@@ -293,10 +319,10 @@ UtilityManager::addEmissions(EnergySource::Emissions &sourceEmissions, EnergySou
 }
 
 
-float
+double
 UtilityManager::get_currPower()
 {
-    float currPower = 0.0;
+    double currPower = 0.0;
 
     for (auto& src: _sourceNames)
     {
@@ -338,10 +364,10 @@ UtilityManager::convert_toSources(bpn::ndarray const& sourceName, bpn::ndarray c
 
         struct EnergySourceParameters esp = {
             .name        = name,
-            .maxCapacity = (float)maxCap[src],
-            .minCapacity = (float)minCap[src],
-            .runCost     = (float)runCost[src],
-            .rampRate    = (float)rampRate[src]
+            .maxCapacity = (double)maxCap[src],
+            .minCapacity = (double)minCap[src],
+            .runCost     = (double)runCost[src],
+            .rampRate    = (double)rampRate[src]
         };
         enum EnergyFuels fuelType = fuelStringToEnum[type];
 

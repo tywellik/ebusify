@@ -11,7 +11,7 @@ public:
 
     int get_emissionsOutput(Emissions& emissions) override;
 
-    int get_productionCost(float &cost, float powerRequest) override;
+    int get_productionCost(double &cost, double powerRequest) override;
 
 private:
     NuclearPlant(const NuclearPlant&) = delete;
@@ -40,7 +40,7 @@ NuclearPlant::get_emissionsOutput(Emissions& emissions)
 
 
 int
-NuclearPlant::get_productionCost(float &cost, float powerRequest)
+NuclearPlant::get_productionCost(double &cost, double powerRequest)
 {
     cost = powerRequest * _runCost / 3600;
 }
