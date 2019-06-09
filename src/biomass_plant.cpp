@@ -9,9 +9,9 @@ public:
     BiomassPlant(struct EnergySourceParameters const &esp);
     ~BiomassPlant();
 
-    int get_emissionsOutput(Emissions& emissions) override;
+    EnergySource::Emissions get_emissionsOutput() override;
 
-    int get_productionCost(double &cost, double powerRequest) override;
+    double get_productionCost(double powerRequest) override;
 
 private:
     BiomassPlant(const BiomassPlant&) = delete;
@@ -28,21 +28,23 @@ BiomassPlant::~BiomassPlant()
 {}
 
 
-int
-BiomassPlant::get_emissionsOutput(Emissions& emissions)
+EnergySource::Emissions
+BiomassPlant::get_emissionsOutput()
 {
-    emissions.carbonDioxide = _currPowerOutput * 0;
-    emissions.methane       = _currPowerOutput * 0;
-    emissions.nitrousOxide  = _currPowerOutput * 0;
+    EnergySource::Emissions emissions = {
+        .carbonDioxide = _currPowerOutput * 0,
+        .methane       = _currPowerOutput * 0,
+        .nitrousOxide  = _currPowerOutput * 0
+    };
 
-    return SUCCESS;
+    return emissions;
 }
 
 
-int
-BiomassPlant::get_productionCost(double &cost, double powerRequest)
+double
+BiomassPlant::get_productionCost(double powerRequest)
 {
-    cost = powerRequest * _runCost / 3600;
+    return powerRequest * _runCost / 3600;
 }
 
 } // namespace NRG

@@ -49,7 +49,6 @@ private:
     int run_optimization(int numSources, double* runCosts, double* minCapacity, double* maxCapacity,
                             std::string* plantNames, std::string* plantNames_on, std::string* plantNames_prod,
                             std::map<std::string, int> arrayLoc, double demandPower);
-    void add_emissions(EnergySource::Emissions &sourceEmissions, EnergySource::Emissions &totalEmissions);
     double get_currPower();
     int convert_toSources(bpn::ndarray const& sourceName, bpn::ndarray const& sourceType, 
                             bpn::ndarray const& maxCap, bpn::ndarray const& minCap,

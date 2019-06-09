@@ -132,9 +132,12 @@ UtilityManager::startup(double demandPower)
         }
     }
 
-    int ret = run_optimization(numSources, runCosts, minCapacity, maxCapacity,
-                                plantNames, plantNames_on, plantNames_prod,
-                                arrayLoc, demandPower);
+    int ret;
+    ret = run_optimization(numSources, runCosts, minCapacity, maxCapacity,
+                            plantNames, plantNames_on, plantNames_prod,
+                            arrayLoc, demandPower);
+
+    
 
     return ret;
 }
@@ -143,6 +146,8 @@ UtilityManager::startup(double demandPower)
 int
 UtilityManager::power_request(double demandPower)
 {
+    double currPower = get_currPower();
+
     int numSources = _sources.size();
     std::map<std::string, int> arrayLoc;
     std::string plantNames[numSources];
@@ -188,12 +193,6 @@ UtilityManager::power_request(double demandPower)
 bp::tuple
 UtilityManager::get_totalEmissions()
 {
-    EnergySource::Emissions sourceEmissions = {
-        .carbonDioxide = 0,
-        .methane       = 0,
-        .nitrousOxide  = 0
-    };
-
     EnergySource::Emissions totalEmissions = {
         .carbonDioxide = 0,
         .methane       = 0,
@@ -202,8 +201,7 @@ UtilityManager::get_totalEmissions()
 
     for (auto& src: _sourceNames)
     {
-        _sources[src]->get_emissionsOutput(sourceEmissions);
-        add_emissions(sourceEmissions, totalEmissions);
+        totalEmissions += _sources[src]->get_emissionsOutput();
     }
 
     return bp::make_tuple(totalEmissions.carbonDioxide, totalEmissions.methane, totalEmissions.nitrousOxide);
@@ -307,15 +305,6 @@ UtilityManager::run_optimization(int numSources, double* runCosts, double* minCa
     }
 
     return optSuccess;
-}
-
-
-void
-UtilityManager::add_emissions(EnergySource::Emissions &sourceEmissions, EnergySource::Emissions &totalEmissions)
-{
-    totalEmissions.carbonDioxide += sourceEmissions.carbonDioxide;
-    totalEmissions.methane       += sourceEmissions.methane;
-    totalEmissions.nitrousOxide  += sourceEmissions.nitrousOxide;
 }
 
 

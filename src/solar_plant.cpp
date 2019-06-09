@@ -10,9 +10,9 @@ public:
     SolarPlant(UtilityManager* um, struct EnergySourceParameters const &esp);
     ~SolarPlant();
 
-    int get_emissionsOutput(Emissions& emissions) override;
+    EnergySource::Emissions get_emissionsOutput() override;
 
-    int get_productionCost(double &cost, double powerRequest) override;
+    double get_productionCost(double powerRequest) override;
 
 private:
     UtilityManager* _um;
@@ -34,21 +34,23 @@ SolarPlant::~SolarPlant()
 {}
 
 
-int
-SolarPlant::get_emissionsOutput(Emissions& emissions)
+EnergySource::Emissions
+SolarPlant::get_emissionsOutput()
 {
-    emissions.carbonDioxide = _currPowerOutput * 0;
-    emissions.methane       = _currPowerOutput * 0;
-    emissions.nitrousOxide  = _currPowerOutput * 0;
+    EnergySource::Emissions emissions = {
+        .carbonDioxide = _currPowerOutput * 0,
+        .methane       = _currPowerOutput * 0,
+        .nitrousOxide  = _currPowerOutput * 0
+    };
 
-    return SUCCESS;
+    return emissions;
 }
 
 
-int
-SolarPlant::get_productionCost(double &cost, double powerRequest)
+double
+SolarPlant::get_productionCost(double powerRequest)
 {
-    cost = powerRequest * _runCost / 3600;
+    return powerRequest * _runCost / 3600;
 }
 
 } // namespace NRG

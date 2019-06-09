@@ -48,12 +48,26 @@ public:
         double carbonDioxide;
         double methane;
         double nitrousOxide;
-        // Add more as necessary
+        
+        Emissions operator+(Emissions rhs) {
+            return {
+                rhs.carbonDioxide + carbonDioxide,
+                rhs.methane + methane,
+                rhs.nitrousOxide + nitrousOxide,
+            };
+        }
+        Emissions operator+=(Emissions rhs) {
+            return {
+                rhs.carbonDioxide + carbonDioxide,
+                rhs.methane + methane,
+                rhs.nitrousOxide + nitrousOxide,
+            };
+        }
     };
 
-    virtual int get_emissionsOutput(Emissions& emissions) = 0;
+    virtual EnergySource::Emissions get_emissionsOutput() = 0;
 
-    virtual int get_productionCost(double &cost, double powerRequest) = 0;
+    virtual double get_productionCost(double powerRequest) = 0;
 
 protected:
     std::string _name;            /** Plant name */

@@ -9,9 +9,9 @@ public:
     CoalPlant(struct EnergySourceParameters const &esp);
     ~CoalPlant();
 
-    int get_emissionsOutput(Emissions& emissions) override;
+    EnergySource::Emissions get_emissionsOutput() override;
 
-    int get_productionCost(double &cost, double powerRequest) override;
+    double get_productionCost(double powerRequest) override;
 
 private:
     CoalPlant(const CoalPlant&) = delete;
@@ -28,21 +28,23 @@ CoalPlant::~CoalPlant()
 {}
 
 
-int
-CoalPlant::get_emissionsOutput(Emissions& emissions)
+EnergySource::Emissions
+CoalPlant::get_emissionsOutput()
 {
-    emissions.carbonDioxide = _currPowerOutput / 3600 * 960.6;
-    emissions.methane       = _currPowerOutput / 3600 * 0;
-    emissions.nitrousOxide  = _currPowerOutput / 3600 * 0;
+    Emissions emissions = {
+        .carbonDioxide = _currPowerOutput * 960.6,
+        .methane       = _currPowerOutput * 0,
+        .nitrousOxide  = _currPowerOutput * 0
+    };
 
-    return SUCCESS;
+    return emissions;
 }
 
 
-int
-CoalPlant::get_productionCost(double &cost, double powerRequest)
+double
+CoalPlant::get_productionCost(double powerRequest)
 {
-    cost = powerRequest * _runCost / 3600;
+    return powerRequest * _runCost / 3600;
 }
 
 } // namespace NRG
