@@ -79,13 +79,24 @@ UtilityManager::init(bpn::ndarray const& sourceName, bpn::ndarray const& sourceT
             bp::throw_error_already_set();
         }
         assert(arr->strides(0) == sizeof(float));
+        std::cout << "All good" << std::endl;
     }
 
     unsigned int dataLen = pvProduction_MW.shape(0);
-    //float* pvProd = reinterpret_cast<float*>(pvProduction_MW.get_data());
-    //_pvProduction.assign(pvProd, pvProd + dataLen);
-    //float* windProd = reinterpret_cast<float*>(windProduction_MW.get_data());
-    //_windProduction.assign(windProd, windProd + dataLen);
+    if (dataLen != windProduction_MW.shape(0)){
+        PyErr_SetString(PyExc_TypeError, "PV and Solar data lengths inconsistent");
+        bp::throw_error_already_set();
+    }
+
+    float* pvProd   = reinterpret_cast<float*>(pvProduction_MW.get_data());
+    float* windProd = reinterpret_cast<float*>(windProduction_MW.get_data());
+
+    //float pvProd[dataLen];
+    //float windProd[dataLen];
+    //&pvProd[0]   = reinterpret_cast<float*>(pvProduction_MW.get_data());
+    //&windProd[0] = reinterpret_cast<float*>(windProduction_MW.get_data());
+    _pvProduction.assign(pvProd, pvProd + dataLen);
+    _windProduction.assign(windProd, windProd + dataLen);
     return ret;
 }
 
@@ -105,64 +116,66 @@ UtilityManager::startup(float power)
         // Model
         env = new GRBEnv();
         GRBModel model = GRBModel(*env);
-        env->set(GRB_IntParam_OutputFlag, 0);        
+        //env->set(GRB_IntParam_OutputFlag, 0);        
         model.set(GRB_StringAttr_ModelName, "startup");
 
-        std::string plantNames_prod[_sources.size()];
-        std::string plantNames_on[_sources.size()];
-        double      runCosts[_sources.size()];
-        double      minCapacity[_sources.size()];
-        double      maxCapacity[_sources.size()];
-        for (int src = 0; src < _sources.size(); ++src)
-        {
-            plantNames_prod[src]  = _sources[src]->get_name() + "_cost";
-            plantNames_on[src]    = _sources[src]->get_name() + "_on";
-            runCosts[src]         = _sources[src]->get_powerCost();
-            minCapacity[src]      = _sources[src]->get_minOutputPower();
-            maxCapacity[src]      = _sources[src]->get_maxOutputPower();
-        }
+        int numSources = _sources.size();
+        std::map<std::string, int> arrayLoc;
+        std::string plantNames[numSources];
+        std::string plantNames_on[numSources];
+        std::string plantNames_prod[numSources];
+        double      runCosts[numSources];
+        double      minCapacity[numSources];
+        double      maxCapacity[numSources];
+
+        int k=0;
         for (auto& src: _sourceNames)
         {
-            plantNames_prod[src]  = _sources[src]->get_name() + "_cost";
-            plantNames_on[src]    = _sources[src]->get_name() + "_on";
-            runCosts[src]         = _sources[src]->get_powerCost();
-            minCapacity[src]      = _sources[src]->get_minOutputPower();
-            maxCapacity[src]      = _sources[src]->get_maxOutputPower();
+            plantNames[k]       = src;
+            plantNames_on[k]    = src + "_on";
+            plantNames_prod[k]  = src + "_cost";
+            runCosts[k]         = _sources[src]->get_powerCost();
+            minCapacity[k]      = _sources[src]->get_minOutputPower();
+            maxCapacity[k]      = _sources[src]->get_maxOutputPower();
+            arrayLoc.insert(std::pair<std::string, int>(src, k)); 
+            k++;
         }
         
-        std::string name;
+        cout << "Iterating through uncontrolled sources:" << endl;
         for (auto& ucSrc : _ucSourceNames)
         {
-            _sources[ucSrc];
-            if (name.compare("Wind (aggregated) - base case") == 0){
-                us->set_powerPoint(_windProduction.front());
+            cout << ucSrc << endl;
+            if (ucSrc.compare("Wind_(aggregated)_-_base_case") == 0){
+                cout << "Setting max wind to:  " << _windProduction.front();
+                maxCapacity[arrayLoc[ucSrc]] = _windProduction.front();
             }
-            if (name.compare("Solar (aggregated) - base case") == 0){
-                us->set_powerPoint(_pvProduction.front());
+            if (ucSrc.compare("Solar_(aggregated)_-_base_case") == 0){
+                cout << "Setting max solar to: " << _pvProduction.front();
+                maxCapacity[arrayLoc[ucSrc]] = _pvProduction.front();
             }
         }
+        
+        double zeros[numSources];
+        double ones[numSources];
+        char types_bin[numSources];
+        char types_cont[numSources];
+        std::fill(zeros, zeros + numSources, 0);
+        std::fill(ones, ones + numSources, 1);
+        std::fill(types_bin, types_bin + numSources, GRB_BINARY);
+        std::fill(types_cont, types_cont + numSources, GRB_CONTINUOUS);
 
-        double zeros[_sources.size()];
-        double ones[_sources.size()];
-        char types_bin[_sources.size()];
-        char types_cont[_sources.size()];
-        std::fill(zeros, zeros + _sources.size(), 0);
-        std::fill(ones, ones + _sources.size(), 1);
-        std::fill(types_bin, types_bin + _sources.size(), GRB_BINARY);
-        std::fill(types_cont, types_cont + _sources.size(), GRB_CONTINUOUS);
-
-        production = model.addVars(minCapacity, maxCapacity, ones, types_cont, plantNames_prod, _sources.size());
-        plantOn    = model.addVars(zeros, ones, ones, types_bin, plantNames_on, _sources.size());
+        production = model.addVars(minCapacity, maxCapacity, ones, types_cont, plantNames_prod, numSources);
+        plantOn    = model.addVars(zeros, ones, ones, types_bin, plantNames_on, numSources);
 
         GRBQuadExpr costTotal = 0;
-        for (int k=0; k < _sources.size(); ++k)
+        for (k=0; k < numSources; ++k)
         {
             costTotal += (runCosts[k] * production[k] * plantOn[k]);
         }
         model.setObjective(costTotal, GRB_MINIMIZE);
 
         GRBQuadExpr proTotal = 0;
-        for (int k=0; k < _sources.size(); ++k)
+        for (k=0; k < numSources; ++k)
         {
             proTotal += production[k] * plantOn[k];
             model.addConstr((production[k] - maxCapacity[k]) <= 0,              "NoOverProd" + std::to_string(k));
@@ -171,13 +184,10 @@ UtilityManager::startup(float power)
         }
         model.addQConstr(proTotal == power, "DemandConstraint");
         
-        // First, open all plants
-        for (int k = 0; k < _sources.size(); ++k)
+        // First, close all plants
+        for (k = 0; k < numSources; ++k)
         {
-            if (k % 2)
-                plantOn[k].set(GRB_DoubleAttr_Start, 0.0);
-            else
-                plantOn[k].set(GRB_DoubleAttr_Start, 1.0);
+            plantOn[k].set(GRB_DoubleAttr_Start, 0.0);
         }
 
         model.update();
@@ -189,7 +199,7 @@ UtilityManager::startup(float power)
         double totalPower = 0.0;
         cout << "\nTOTAL COSTS: " << model.get(GRB_DoubleAttr_ObjVal) << endl;
         cout << "SOLUTION:" << endl;
-        for (int k = 0; k < _sources.size(); ++k)
+        for (k = 0; k < numSources; ++k)
         {
             if (plantOn[k].get(GRB_DoubleAttr_X) > 0.99)
             {
@@ -199,8 +209,8 @@ UtilityManager::startup(float power)
                 {
                     cout << "Plant " << k << " open and producing: \t"
                          << production[k].get(GRB_DoubleAttr_X) << " MW.   \t (" 
-                         << 100*production[k].get(GRB_DoubleAttr_X)/_sources[k]->get_maxOutputPower()
-                         << "% utilization)" << "\t Plant: " << _sources[k]->get_name() << endl;
+                         << 100*production[k].get(GRB_DoubleAttr_X)/maxCapacity[k]
+                         << "% utilization)" << "\t Plant: " << plantNames[k] << endl;
                     totalPower += production[k].get(GRB_DoubleAttr_X);
                 }
             }
@@ -264,9 +274,9 @@ UtilityManager::get_totalEmissions()
         .nitrousOxide  = 0
     };
 
-    for (auto& source : _sources)
+    for (auto& src: _sourceNames)
     {
-        source->get_emissionsOutput(sourceEmissions);
+        _sources[src]->get_emissionsOutput(sourceEmissions);
         addEmissions(sourceEmissions, totalEmissions);
     }
 
@@ -288,9 +298,9 @@ UtilityManager::get_currPower()
 {
     float currPower = 0.0;
 
-    for (auto& source : _sources)
+    for (auto& src: _sourceNames)
     {
-        currPower += source->get_currPower();
+        currPower += _sources[src]->get_currPower();
     }
 
     return currPower;
@@ -368,7 +378,8 @@ UtilityManager::convert_toSources(bpn::ndarray const& sourceName, bpn::ndarray c
             PyErr_SetString(PyExc_TypeError, "Facility Type is not supported");
             bp::throw_error_already_set();
         }
-        
+
+        _sourceNames.push_back(name);
         _sources.insert(std::pair<std::string, std::shared_ptr<EnergySource>>(name, eSrc)); 
         //_sources.push_back(eSrc); // Add new plant to list of plants
     }

@@ -26,7 +26,6 @@ SolarPlant::SolarPlant(UtilityManager* um, struct EnergySourceParameters const &
     EnergySource::EnergySource(esp),
     _um(um)
 {
-    
     _um->register_uncontrolledSource(get_name());
 }
 
