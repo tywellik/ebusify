@@ -35,6 +35,8 @@ public:
 
     int power_request(double demandPower);
 
+    int set_power(std::vector<std::pair<std::string, double>> prod, bool overrideRamps = false);
+
     bp::tuple get_totalEmissions();
 
     int register_uncontrolledSource(std::string src);
@@ -48,7 +50,7 @@ private:
 
     int run_optimization(int numSources, double* runCosts, double* minCapacity, double* maxCapacity,
                             std::string* plantNames, std::string* plantNames_on, std::string* plantNames_prod,
-                            std::map<std::string, int> arrayLoc, double demandPower);
+                            std::map<std::string, int> arrayLoc, double demandPower, std::map<std::string, double>& sourceProd);
     double get_currPower();
     int convert_toSources(bpn::ndarray const& sourceName, bpn::ndarray const& sourceType, 
                             bpn::ndarray const& maxCap, bpn::ndarray const& minCap,

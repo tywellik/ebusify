@@ -1,0 +1,48 @@
+#ifndef BUS_H
+#define BUS_H
+#include <map>
+
+namespace BUS {
+
+class Bus 
+{
+public:
+    Bus(int id, double capacity, double consumptionRate, double chargeRate, double distFirstCharge);
+    ~Bus();
+    
+    bool operator <(Bus const &obj) { 
+         return _identifier < obj.get_identifier(); 
+    } 
+
+    int init_soc(double stateOfCharge);
+
+    int    get_identifier() const {return _identifier;}
+    double get_capacity() const {return _capacity;}
+    double get_consumptionRate() const {return _consumptionRate;}
+    double get_chargeRate() const {return _chargeRate;}
+    double get_distFirstCharge() const {return _distFirstCharge;}
+    double get_stateOfCharge() const {return _stateOfCharge;}
+    double get_stateOfCharge(int ts) const {return _socTime.find(ts)->second;}
+    double get_minSoc() const {return _minSoc;}
+    double get_maxSoc() const {return _maxSoc;}
+
+    int command_power(double power, double timestep, int simTime, bool force = false);
+
+private:
+    int    _identifier;
+    double _capacity;
+    double _consumptionRate;
+    double _chargeRate;
+    double _distFirstCharge;
+    double _minSoc;
+    double _maxSoc;
+
+    double _stateOfCharge;
+    std::map<int, double> _socTime;
+    int _lastTsRun;
+};
+
+}
+
+
+#endif /** BUS_H */

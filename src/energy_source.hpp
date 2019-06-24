@@ -42,7 +42,7 @@ public:
     double get_maxNegativeRamp() const;
     double get_currPower() const;
 
-    void set_powerPoint(double power);
+    void set_powerPoint(double power, bool overrideRamps = false);
 
     struct Emissions {
         double carbonDioxide;

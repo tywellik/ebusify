@@ -10,7 +10,7 @@ EnergySource::EnergySource(struct EnergySourceParameters const &esp)
     _maxPositiveRamp(esp.rampRate),
     _maxNegativeRamp(esp.rampRate),
     _runCost(esp.runCost),
-    _currPowerOutput(0.0)//esp.maxCapacity * esp.minCapacity)
+    _currPowerOutput(0.0)
 {}
 
 
@@ -68,12 +68,17 @@ EnergySource::get_currPower() const
 
 
 void
-EnergySource::set_powerPoint(double power)
+EnergySource::set_powerPoint(double power, bool overrideRamps)
 {
-    double maxPosChange = _maxOutputPower * _maxPositiveRamp;
-    double maxNegChange = _maxOutputPower * _maxNegativeRamp;
-    double setPower = std::max(std::min(_currPowerOutput + maxPosChange, _currPowerOutput), _currPowerOutput - maxNegChange);
-
+    double setPower;
+    if (!overrideRamps) {
+        double maxPosChange = _maxOutputPower * _maxPositiveRamp;
+        double maxNegChange = _maxOutputPower * _maxNegativeRamp;
+        setPower = std::max(std::min(_currPowerOutput + maxPosChange, _currPowerOutput), _currPowerOutput - maxNegChange);
+    }
+    else
+        setPower = power;
+    
     _currPowerOutput = setPower;
 }
 

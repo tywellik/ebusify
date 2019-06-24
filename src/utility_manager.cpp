@@ -125,20 +125,26 @@ UtilityManager::startup(double demandPower)
         if (ucSrc.compare("Wind_(aggregated)_-_base_case") == 0){
             LOGDBG("Setting max wind to:  %f", _windProduction.front());
             maxCapacity[arrayLoc[ucSrc]] = _windProduction.front();
+            _windProduction.erase(_windProduction.begin());
         }
         if (ucSrc.compare("Solar_(aggregated)_-_base_case") == 0){
             LOGDBG("Setting max solar to: %f", _pvProduction.front());
             maxCapacity[arrayLoc[ucSrc]] = _pvProduction.front();
+            _pvProduction.erase(_pvProduction.begin());
         }
     }
 
-    int ret;
-    ret = run_optimization(numSources, runCosts, minCapacity, maxCapacity,
-                            plantNames, plantNames_on, plantNames_prod,
-                            arrayLoc, demandPower);
+    std::map<std::string, double> sourceProd;
+    int ret = run_optimization(numSources, runCosts, minCapacity, maxCapacity,
+                                plantNames, plantNames_on, plantNames_prod,
+                                arrayLoc, demandPower, sourceProd);
 
-    
-
+    std::vector<std::pair<std::string, double>> prodVals;
+    for (auto& src: _sourceNames)
+    {
+        prodVals.push_back(std::pair<std::string, double>(src, sourceProd[src]));
+    }
+    set_power(prodVals, true);
     return ret;
 }
 
@@ -146,8 +152,6 @@ UtilityManager::startup(double demandPower)
 int
 UtilityManager::power_request(double demandPower)
 {
-    double currPower = get_currPower();
-
     int numSources = _sources.size();
     std::map<std::string, int> arrayLoc;
     std::string plantNames[numSources];
@@ -164,8 +168,10 @@ UtilityManager::power_request(double demandPower)
         plantNames_on[k]    = src + "_on";
         plantNames_prod[k]  = src + "_cost";
         runCosts[k]         = _sources[src]->get_powerCost();
-        minCapacity[k]      = _sources[src]->get_minOutputPower();
-        maxCapacity[k]      = _sources[src]->get_maxOutputPower();
+        double maxRampDown  = _sources[src]->get_maxNegativeRamp()*_sources[src]->get_maxOutputPower();
+        double maxRampUp    = _sources[src]->get_maxPositiveRamp()*_sources[src]->get_maxOutputPower();
+        minCapacity[k]      = std::max(_sources[src]->get_minOutputPower(), _sources[src]->get_currPower() - maxRampDown);
+        maxCapacity[k]      = std::max(minCapacity[k] + maxRampUp, _sources[src]->get_currPower() + maxRampUp);
         arrayLoc.insert(std::pair<std::string, int>(src, k)); 
         k++;
     }
@@ -175,18 +181,38 @@ UtilityManager::power_request(double demandPower)
         if (ucSrc.compare("Wind_(aggregated)_-_base_case") == 0){
             LOGDBG("Setting max wind to:  %f", _windProduction.front());
             maxCapacity[arrayLoc[ucSrc]] = _windProduction.front();
+            _windProduction.erase(_windProduction.begin());
         }
         if (ucSrc.compare("Solar_(aggregated)_-_base_case") == 0){
             LOGDBG("Setting max solar to: %f", _pvProduction.front());
             maxCapacity[arrayLoc[ucSrc]] = _pvProduction.front();
+            _pvProduction.erase(_pvProduction.begin());
         }
     }
 
+    std::map<std::string, double> sourceProd;
     int ret = run_optimization(numSources, runCosts, minCapacity, maxCapacity,
                                 plantNames, plantNames_on, plantNames_prod,
-                                arrayLoc, demandPower);
+                                arrayLoc, demandPower, sourceProd);
 
+    std::vector<std::pair<std::string, double>> prodVals;
+    for (auto& src: _sourceNames)
+    {
+        prodVals.push_back(std::pair<std::string, double>(src, sourceProd[src]));
+    }
+    set_power(prodVals);
     return ret;
+}
+
+
+int 
+UtilityManager::set_power(std::vector<std::pair<std::string, double>> prod, bool overrideRamps)
+{
+    for( auto& src : prod)
+    {
+        //LOGDBG("Setting power for: %s to: %.2f", src.first.c_str(), src.second);
+        _sources[src.first]->set_powerPoint(src.second, overrideRamps);
+    }
 }
 
 
@@ -211,7 +237,7 @@ UtilityManager::get_totalEmissions()
 int
 UtilityManager::run_optimization(int numSources, double* runCosts, double* minCapacity, double* maxCapacity,
                                  std::string* plantNames, std::string* plantNames_on, std::string* plantNames_prod,
-                                 std::map<std::string, int> arrayLoc, double demandPower)
+                                 std::map<std::string, int> arrayLoc, double demandPower, std::map<std::string, double>& sourceProd)
 {
     int k, optSuccess;
 
@@ -275,21 +301,24 @@ UtilityManager::run_optimization(int numSources, double* runCosts, double* minCa
             std::stringstream ss;
             if (plantOn[k].get(GRB_DoubleAttr_X) > 0.99)
             {
+                totalPower += production[k].get(GRB_DoubleAttr_X);
+                sourceProd.insert(std::pair<std::string, double>(plantNames[k], production[k].get(GRB_DoubleAttr_X)));
+
                 ss << std::left << std::setw(40)
                    << plantNames[k].c_str() << " open and producing: "
                    << std::fixed << std::setprecision(2)
                    << production[k].get(GRB_DoubleAttr_X) << "MW ("
                    << 100*production[k].get(GRB_DoubleAttr_X)/maxCapacity[k]
                    << "% Cap Factor)";
-                
-
-                totalPower += production[k].get(GRB_DoubleAttr_X);
             }
             else
             {
+                sourceProd.insert(std::pair<std::string, double>(plantNames[k], 0.0));
+
                 ss << std::left << std::setw(40) << plantNames[k].c_str() 
                    << " closed";
             }
+
             LOGDBG("%s", ss.str().c_str());
         }
 
