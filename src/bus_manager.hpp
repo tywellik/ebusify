@@ -51,7 +51,6 @@ private:
     std::map<ChargerPtr, std::map<BusPtr, bool>> _necessities;
 
     // Time Series Data per Charging Station
-    std::vector<std::shared_ptr<std::map<BusPtr, double>>> _consumpTime;
     std::vector<std::shared_ptr<std::map<ChargerPtr, int>>> _chrgrsUsedTime;
     std::vector<std::shared_ptr<std::map<ChargerPtr, double>>> _energyChargedTime;
 

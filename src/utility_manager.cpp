@@ -5,7 +5,7 @@
 #include <fstream>
 
 
-#define VERBOSE
+//#define VERBOSE
 #define LOGERR(fmt, args...)   do{ fprintf(stderr, fmt "\n", ##args); }while(0)
 #ifdef VERBOSE
     #define LOGDBG(fmt, args...)   do{ fprintf(stdout, fmt "\n", ##args); }while(0)
@@ -260,7 +260,8 @@ UtilityManager::run_optimization(int numSources, double* runCosts, double* minCa
         GRBModel model = GRBModel(*env);
         env->set(GRB_IntParam_OutputFlag, 0);        
         model.set(GRB_StringAttr_ModelName, "startup");
-        
+        model.set(GRB_IntParam_OutputFlag, 0);
+
         double zeros[numSources];
         double ones[numSources];
         char types_bin[numSources];
@@ -302,6 +303,7 @@ UtilityManager::run_optimization(int numSources, double* runCosts, double* minCa
         //model.write("test.prm");
         //model.write("test.mst");
 
+#ifdef VERBOSE
         double totalPower = 0.0;
         LOGDBG("TOTAL COSTS: %f", model.get(GRB_DoubleAttr_ObjVal));
         LOGDBG("SOLUTION:");
@@ -330,7 +332,7 @@ UtilityManager::run_optimization(int numSources, double* runCosts, double* minCa
 
             LOGDBG("%s", ss.str().c_str());
         }
-
+#endif
         LOGDBG("Total Power Produced: %.2f", totalPower);
     }
     catch (GRBException e)

@@ -87,18 +87,6 @@ BusManager::init_buses(bpn::ndarray const& busIdentifiers, bpn::ndarray const& c
             _buses.insert(std::pair<int, BusPtr>(busIds[line], busPtr));
         }
     }
-
-    /*
-    for (auto& bus : _buses)
-    {
-        std::cout << "Bus " << bus.first << std::endl
-            << "\tState of Charge:  " << bus.second->get_stateOfCharge()   << std::endl
-            << "\tCapacity:         " << bus.second->get_capacity()        << std::endl
-            << "\tCharge Rate:      " << bus.second->get_chargeRate()      << std::endl
-            << "\tConsumption Rate: " << bus.second->get_consumptionRate() << std::endl
-            << "\tFirst Chrg Dist:  " << bus.second->get_distFirstCharge() << std::endl;
-    }
-    */
 }
 
 
@@ -162,18 +150,14 @@ BusManager::run(double powerRequest, time_t simTime)
     if ( (simTime % 3600) == 0)
         std::cout << "Sim Time: " << simTime/3600 << std::endl;
 
+    double powerConsumption;
     std::vector<Priority> priorities;
     std::map<BusPtr, bool> necessities;
 
     // Get departure times for all buses at each charging station
     for (auto& chrgr: _chargers){
-        //std::cout << "Bork" << std::endl;
         _nextDepart[chrgr.second] = get_nextDepartureTimes(chrgr.second, simTime);
         get_priorities(priorities, necessities, chrgr.second, simTime);
-        //for (auto& bus: priorities){
-        //    if (bus.first->get_identifier() == 1)
-        //        std::cout << "In this list" << std::endl;
-        //}
         _priorities[chrgr.second] = priorities;
         _necessities[chrgr.second] = necessities;
         priorities.clear();
@@ -188,7 +172,11 @@ BusManager::run(double powerRequest, time_t simTime)
     _chrgrsUsedTime.push_back(chrgrsUsedPtr);
     handle_routes(simTime);
 
-    return 0;
+    for (auto& bus: _buses)
+        powerConsumption += bus.second->get_consumpCharger(simTime);
+
+    powerConsumption *= 60; // kWh to kW
+    return powerConsumption;
 }
 
 
@@ -206,10 +194,8 @@ BusManager::file_dump()
 
     int simTime = 16200;
     for (auto& chrgrMap: _chrgrsUsedTime){
-        //std::cout << "Time: " << simTime << std::endl;
         outfile << simTime << ",";
         for (auto& chrgr: *chrgrMap){
-            //std::cout << "\t" << chrgr.first->get_name() << ": " << chrgr.second << std::endl;
             outfile << chrgr.second << ",";
         }
         outfile << std::endl;
@@ -269,7 +255,6 @@ BusManager::file_dump()
 }
 
 
-//std::map<BUS::BusManager::ChargerPtr, int> *
 int
 BusManager::handle_necessaryCharging(std::map<ChargerPtr, int> *chrgrsUsed, time_t simTime)
 {
@@ -277,7 +262,6 @@ BusManager::handle_necessaryCharging(std::map<ChargerPtr, int> *chrgrsUsed, time
     double chrgRate;
     std::vector<Priority> priorities;
     std::map<BusPtr, bool> necessities;
-    //std::map<ChargerPtr, int> *chrgrsUsed = new std::map<ChargerPtr, int>;
 
     for(auto& chrgr: _busSchedule){
         numPlugs = chrgr.first->get_numPlugs();
