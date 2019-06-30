@@ -94,37 +94,52 @@ renewPwrTime = []
 fltPwrTime = []
 busPwrTime = []
 busTrgtPwrTime = []
+busManagerMode = 2 # Diesel buses
+#busManagerMode = 1 # Smart Charging
+#busManagerMode = 0 # Normal Operation Charging (No Discharge, Charge when needed)
 
 for idx, power in enumerate(df_nonBusConsump['Non-Bus Consumption (MW)']):
     if (idx == 0):
-        # Calculate filtered power
-        fltrPower = solar[idx] + wind[idx]
-        renewPwrTime.append(solar[idx] + wind[idx])
-        fltPwrTime.append(fltrPower)
+        if (busManagerMode < 2):
+            # Calculate filtered power
+            fltrPower = solar[idx] + wind[idx]
+            renewPwrTime.append(solar[idx] + wind[idx])
+            fltPwrTime.append(fltrPower)
 
-        # Find difference between power and filtered power, 
-        # bus manager will attempt to absorb(+) or provide(-) this
-        busTargetPower = avgBusPower + (solar[idx] + wind[idx]) - fltrPower
-        busTrgtPwrTime.append(busTargetPower)
+            # Find difference between power and filtered power, 
+            # bus manager will attempt to absorb(+) or provide(-) this
+            busTargetPower = avgBusPower + (solar[idx] + wind[idx]) - fltrPower
+            busTrgtPwrTime.append(busTargetPower)
 
-        busPower = CapMetro.run(busTargetPower*1000, 16200 + (idx*60))
-        busPwrTime.append(busPower/1000)
+            busPower = CapMetro.run(busTargetPower*1000, busManagerMode, 16200 + (idx*60))
+            busPwrTime.append(busPower/1000)
 
-        AustinEnergy.startup(power)
+        else:
+            busPower = 0
+            fltPwrTime.append(0)
+            busPwrTime.append(0)
+        
+        AustinEnergy.startup(power + busPower/1000)
 
     else:
-        # Calculate filtered power
-        fltrPower = (fltrFactor * fltrPower) + ((1-fltrFactor) * (solar[idx] + wind[idx]))
-        renewPwrTime.append(solar[idx] + wind[idx])
-        fltPwrTime.append(fltrPower)
-        
-        # Find difference between power and filtered power, 
-        # bus manager will attempt to absorb(+) or provide(-) this
-        busTargetPower = avgBusPower + (solar[idx] + wind[idx]) - fltrPower
-        busTrgtPwrTime.append(busTargetPower)
+        if (busManagerMode < 2):
+            # Calculate filtered power
+            fltrPower = (fltrFactor * fltrPower) + ((1-fltrFactor) * (solar[idx] + wind[idx]))
+            renewPwrTime.append(solar[idx] + wind[idx])
+            fltPwrTime.append(fltrPower)
+            
+            # Find difference between power and filtered power, 
+            # bus manager will attempt to absorb(+) or provide(-) this
+            busTargetPower = avgBusPower + (solar[idx] + wind[idx]) - fltrPower
+            busTrgtPwrTime.append(busTargetPower)
 
-        busPower = CapMetro.run(busTargetPower*1000, 16200 + (idx*60))
-        busPwrTime.append(busPower/1000)
+            busPower = CapMetro.run(busTargetPower*1000, busManagerMode, 16200 + (idx*60))
+            busPwrTime.append(busPower/1000)
+
+        else:
+            busPower = 0
+            fltPwrTime.append(0)
+            busPwrTime.append(0)
 
         AustinEnergy.power_request(power + busPower/1000)
 

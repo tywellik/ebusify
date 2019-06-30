@@ -34,7 +34,7 @@ public:
                     bpn::ndarray const& chargeStart, bpn::ndarray const& chargeEnd,
                     bpn::ndarray const& distNextChrg, bpn::ndarray const& chargerId);
 
-    int run(double powerRequest, time_t simTime);
+    int run(double powerRequest, int mode, time_t simTime);
 
     void file_dump();
 
@@ -57,6 +57,7 @@ private:
 
     
     int handle_necessaryCharging(double& pwrConsump, std::map<ChargerPtr, int> *chrgrsUsed, time_t simTime);
+    int handle_remainingCharging(double& pwrConsump, std::map<ChargerPtr, int> *chrgrsUsed, time_t simTime);
     int handle_powerRequest(double& pwrConsump, std::map<ChargerPtr, int> *chrgrsUsed, double powerRequest, time_t simTime);
     void handle_charging(double powerRequest, time_t simTime);
     void handle_routes(time_t simTime);

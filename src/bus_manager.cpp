@@ -19,6 +19,9 @@
 
 namespace BUS {
 
+#define SMART_CHARGE        0x01
+#define ALLOW_DISCHARGE     0x02
+
 BusManager::BusManager()
 :
     _totalCharge(0.0)
@@ -150,8 +153,10 @@ BusManager::init_schedule(bpn::ndarray const& routeIdentifiers, bpn::ndarray con
 
 
 int
-BusManager::run(double powerRequest, time_t simTime)
-{
+BusManager::run(double powerRequest, int mode, time_t simTime)
+{    
+    bool allowSmartCharge = (mode & SMART_CHARGE);
+
     if ( (simTime % 3600) == 0)
         std::cout << "Sim Time: " << simTime/3600 << std::endl;
 
@@ -174,7 +179,10 @@ BusManager::run(double powerRequest, time_t simTime)
     std::map<ChargerPtr, int> *chrgrsUsed = new std::map<ChargerPtr, int>;
     std::shared_ptr<std::map<ChargerPtr, int>> chrgrsUsedPtr;
     handle_necessaryCharging(powerConsumption, chrgrsUsed, simTime);
-    handle_powerRequest(powerConsumption, chrgrsUsed, powerRequest, simTime);
+    if (allowSmartCharge)
+        handle_powerRequest(powerConsumption, chrgrsUsed, powerRequest, simTime);
+    else
+        handle_remainingCharging(powerConsumption, chrgrsUsed, simTime);
     chrgrsUsedPtr.reset(chrgrsUsed);
     _chrgrsUsedTime.push_back(chrgrsUsedPtr);
     handle_routes(simTime);
@@ -314,6 +322,59 @@ BusManager::handle_necessaryCharging(double& pwrConsump, std::map<ChargerPtr, in
 
 
 int
+BusManager::handle_remainingCharging(double& pwrConsump, std::map<ChargerPtr, int> *chrgrsUsed, time_t simTime)
+{
+    int numPlugs, plugsInUse, ret;
+    double chrgRate;
+    std::vector<Priority> priorities;
+    std::map<BusPtr, bool> necessities;
+
+    for(auto& chrgr: _busSchedule){
+        numPlugs = chrgr.first->get_numPlugs();
+        plugsInUse = (*chrgrsUsed)[chrgr.first];
+        priorities = _priorities[chrgr.first];
+        necessities = _necessities[chrgr.first];
+
+        // Priorities vector is in order so we charge the most necessary bus first
+        for (auto& priority : priorities){
+            BusPtr bus = priority.first;
+            double chargePriority = priority.second;
+
+            if ( necessities[bus] == false && chargePriority > 0.0 && plugsInUse < numPlugs ){
+                plugsInUse++;
+                chrgRate = bus->get_chargeRate(); // kWh / min
+                chrgRate *= 60; // kW
+                ret = bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER);
+                if ( ret != 0 ){
+                    if ( ret == OVER_MAX_SOC ){
+                        double busSoc = bus->get_stateOfCharge();
+                        double busCap = bus->get_capacity();
+                        double busMaxSoc = bus->get_maxSoc();
+                        double energyToCharge = (busMaxSoc - busSoc) * busCap; // kWh
+                        bus->command_power(energyToCharge*60, 60, simTime, PowerType::e_ATCHARGER);
+                        _totalCharge += energyToCharge;
+                        pwrConsump += energyToCharge*60;
+                    }
+                    else if ( ret == UNDER_MIN_SOC ){
+                        LOGDBG("Bus %i is below min SoC and charging", bus->get_identifier());
+                        bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER, true);
+                        _totalCharge += chrgRate / 60;
+                        pwrConsump += chrgRate;
+                    }
+                } else {
+                    _totalCharge += chrgRate / 60;
+                    pwrConsump += chrgRate;
+                }
+            }
+        }
+        (*chrgrsUsed)[chrgr.first] = plugsInUse;
+    }
+
+    return 0;
+}
+
+
+int
 BusManager::handle_powerRequest(double& pwrConsump, std::map<ChargerPtr, int> *chrgrsUsed, double powerRequest, time_t simTime)
 {
     int numPlugs, plugsInUse, ret;
@@ -339,10 +400,9 @@ BusManager::handle_powerRequest(double& pwrConsump, std::map<ChargerPtr, int> *c
             numPlugs   = chrgr->get_numPlugs();
             plugsInUse = (*chrgrsUsed)[chrgr];
 
-            if ( necessities[bus] == false && /* chargePriority  > 0.0 &&*/ plugsInUse < numPlugs ){
+            if ( necessities[bus] == false && plugsInUse < numPlugs ){
                 (*chrgrsUsed)[chrgr]++;
                 chrgRate = std::min(bus->get_chargeRate()*60, targetPwr);
-                
                 ret = bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER);
                 if ( ret != 0 ){
                     if ( ret == OVER_MAX_SOC ){
