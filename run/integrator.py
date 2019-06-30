@@ -89,15 +89,22 @@ CapMetro.init_schedule(schedRouteIds.values, schedBusIds.values, chargeStrts.val
 #                 Running Model                  #
 ##################################################
 avgBusPower = 130.605 * 60 / 1000  # MW
-fltrFactor = 0.75
+fltrFactor = 0.90
+renewPwrTime = []
+fltPwrTime = []
 busPwrTime = []
 busTrgtPwrTime = []
 
 for idx, power in enumerate(df_nonBusConsump['Non-Bus Consumption (MW)']):
     if (idx == 0):
-        fltrPower = power - solar[idx] - wind[idx]
+        # Calculate filtered power
+        fltrPower = solar[idx] + wind[idx]
+        renewPwrTime.append(solar[idx] + wind[idx])
+        fltPwrTime.append(fltrPower)
 
-        busTargetPower = avgBusPower + (power - solar[idx] - wind[idx]) - fltrPower
+        # Find difference between power and filtered power, 
+        # bus manager will attempt to absorb(+) or provide(-) this
+        busTargetPower = avgBusPower + (solar[idx] + wind[idx]) - fltrPower
         busTrgtPwrTime.append(busTargetPower)
 
         busPower = CapMetro.run(busTargetPower*1000, 16200 + (idx*60))
@@ -107,11 +114,13 @@ for idx, power in enumerate(df_nonBusConsump['Non-Bus Consumption (MW)']):
 
     else:
         # Calculate filtered power
-        fltrPower = (fltrFactor * fltrPower) + ((1-fltrFactor) * (power - solar[idx] - wind[idx]))
+        fltrPower = (fltrFactor * fltrPower) + ((1-fltrFactor) * (solar[idx] + wind[idx]))
+        renewPwrTime.append(solar[idx] + wind[idx])
+        fltPwrTime.append(fltrPower)
         
         # Find difference between power and filtered power, 
         # bus manager will attempt to absorb(+) or provide(-) this
-        busTargetPower = avgBusPower + (power - solar[idx] - wind[idx]) - fltrPower
+        busTargetPower = avgBusPower + (solar[idx] + wind[idx]) - fltrPower
         busTrgtPwrTime.append(busTargetPower)
 
         busPower = CapMetro.run(busTargetPower*1000, 16200 + (idx*60))
@@ -124,5 +133,33 @@ AustinEnergy.file_dump()
 CapMetro.file_dump()
 
 time = range(len(busPwrTime))
-plt.plot(time, busTrgtPwrTime, 'r', time, busPwrTime, 'b')
+result = map(float.__sub__, busTrgtPwrTime, busPwrTime)
+
+cols = ['Bus Target Power', 'Bus Achieved Power']
+pltTime     = pd.Series(data=time, name='time')
+busTarget   = pd.Series(data=busTrgtPwrTime, name='Bus Target Power')
+busAchieved = pd.Series(data=busPwrTime, name='Bus Achieved Power')
+df_busTarget = pd.concat([busTarget, busAchieved], axis=1)
+df_busTarget.set_index(pltTime, inplace=True)
+
+cols = ['Renewable Power', 'Filtered Renewable Power']
+renewPwr    = pd.Series(data=renewPwrTime, name='Renewable Power')
+fltRenewPwr = pd.Series(data=fltPwrTime, name='Filtered Renewable Power')
+df_renewPwr = pd.concat([renewPwr, fltRenewPwr], axis=1)
+df_renewPwr.set_index(pltTime, inplace=True)
+
+df_busTarget.plot()
+df_busTarget.to_csv('BusManagerPower.csv')
+plt.show()
+
+df_renewPwr.plot()
+df_renewPwr.to_csv('RenewablePower.csv')
+plt.show()
+
+exit()
+
+plt.plot(time, busTrgtPwrTime, 'r', time, busPwrTime, 'b', time, result, 'g')
+plt.show()
+
+plt.plot(time, fltPwrTime, time, renewPwrTime)
 plt.show()

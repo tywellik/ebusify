@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <chrono>
 #include <thread>
+#include <math.h>
 
 
 //#define VERBOSE
@@ -138,6 +139,10 @@ BusManager::init_schedule(bpn::ndarray const& routeIdentifiers, bpn::ndarray con
         for (int i = chrgStrt; i < chrgEnd; i+=60){
             _busSchedule[chrgPtr][i].push_back(busPtr);
         }
+
+        // Get bus back to 50% SOC
+        if ( std::isnan(distNextChrg[line]) )
+            distNextChrg[line] = (0.5 - 0.1) * busPtr->get_capacity() / busPtr->get_consumptionRate();
 
         _nextTripDist[busIds[line]][chrgEnd] = distNextChrg[line];
     }
@@ -334,7 +339,7 @@ BusManager::handle_powerRequest(double& pwrConsump, std::map<ChargerPtr, int> *c
             numPlugs   = chrgr->get_numPlugs();
             plugsInUse = (*chrgrsUsed)[chrgr];
 
-            if ( necessities[bus] == false && chargePriority > 0.0 && plugsInUse < numPlugs ){
+            if ( necessities[bus] == false && /* chargePriority  > 0.0 &&*/ plugsInUse < numPlugs ){
                 (*chrgrsUsed)[chrgr]++;
                 chrgRate = std::min(bus->get_chargeRate()*60, targetPwr);
                 
@@ -372,10 +377,11 @@ BusManager::handle_powerRequest(double& pwrConsump, std::map<ChargerPtr, int> *c
             auto chrgr = _busToCharger[bus];
             numPlugs   = chrgr->get_numPlugs();
             plugsInUse = (*chrgrsUsed)[chrgr];
-            
+
             if ( necessities[bus] == false && chargePriority < 0.0 && plugsInUse < numPlugs ){
                 (*chrgrsUsed)[chrgr]++;
                 chrgRate = std::max(-bus->get_chargeRate()*60, targetPwr);
+                chrgRate = std::max(chrgRate, chargePriority*bus->get_chargeRate());
                 
                 ret = bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER);
                 if ( ret != 0 ){
@@ -444,7 +450,7 @@ BusManager::handle_routes(time_t simTime)
 
             int ret = bus->command_power(-reqdEnrgForTrip, 3600, simTime, PowerType::e_ONROUTE);
             if ( ret != 0 )
-                std::cout << "Bus " << busId << ": Not enough energy for route" << std::endl;
+                std::cout << simTime << ":\tBus " << busId << ": Not enough energy for route" << std::endl;
         }
     }
 }
@@ -489,7 +495,7 @@ BusManager::get_priorities(std::vector<Priority> &priorities, std::map<BusPtr, b
         // Push bus id and kWh/min to priorities vector
         priorities.push_back(Priority(bus, normPriority));
         // Calc necessary kWh/min for next time step to achieve necessary kWh before charge end time
-        reqdChrgRate = reqdEnrgBeforeTrip / ((nextDepart[bus] - (simTime + 59.9))/60);
+        reqdChrgRate = reqdEnrgBeforeTrip / ((nextDepart[bus] - (simTime + 59.999999))/60);
         if ( reqdChrgRate > bus->get_chargeRate() ){
             necessities[bus] = true;
             /*std::cout << "Bus " << bus->get_identifier() << " needs to charge" << std::endl;

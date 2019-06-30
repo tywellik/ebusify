@@ -177,7 +177,8 @@ UtilityManager::power_request(double demandPower)
         double maxRampDown  = _sources[src]->get_maxNegativeRamp()*_sources[src]->get_maxOutputPower();
         double maxRampUp    = _sources[src]->get_maxPositiveRamp()*_sources[src]->get_maxOutputPower();
         minCapacity[k]      = std::max(_sources[src]->get_minOutputPower(), _sources[src]->get_currPower() - maxRampDown);
-        maxCapacity[k]      = std::max(minCapacity[k] + maxRampUp, _sources[src]->get_currPower() + maxRampUp);
+        double maxCap       = std::max(minCapacity[k], _sources[src]->get_currPower() + maxRampUp);
+        maxCapacity[k]      = std::min(_sources[src]->get_maxOutputPower(), maxCap);
         arrayLoc.insert(std::pair<std::string, int>(src, k)); 
         k++;
     }
@@ -303,7 +304,6 @@ UtilityManager::run_optimization(int numSources, double* runCosts, double* minCa
         //model.write("test.prm");
         //model.write("test.mst");
 
-#ifdef VERBOSE
         double totalPower = 0.0;
         LOGDBG("TOTAL COSTS: %f", model.get(GRB_DoubleAttr_ObjVal));
         LOGDBG("SOLUTION:");
@@ -332,7 +332,6 @@ UtilityManager::run_optimization(int numSources, double* runCosts, double* minCa
 
             LOGDBG("%s", ss.str().c_str());
         }
-#endif
         LOGDBG("Total Power Produced: %.2f", totalPower);
     }
     catch (GRBException e)
