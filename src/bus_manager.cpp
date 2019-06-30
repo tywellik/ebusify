@@ -150,7 +150,7 @@ BusManager::run(double powerRequest, time_t simTime)
     if ( (simTime % 3600) == 0)
         std::cout << "Sim Time: " << simTime/3600 << std::endl;
 
-    double powerConsumption;
+    double powerConsumption = 0.0;
     std::vector<Priority> priorities;
     std::map<BusPtr, bool> necessities;
 
@@ -158,6 +158,8 @@ BusManager::run(double powerRequest, time_t simTime)
     for (auto& chrgr: _chargers){
         _nextDepart[chrgr.second] = get_nextDepartureTimes(chrgr.second, simTime);
         get_priorities(priorities, necessities, chrgr.second, simTime);
+        for (auto& bus: priorities)
+            _busToCharger[bus.first] = chrgr.second;
         _priorities[chrgr.second] = priorities;
         _necessities[chrgr.second] = necessities;
         priorities.clear();
@@ -166,16 +168,14 @@ BusManager::run(double powerRequest, time_t simTime)
 
     std::map<ChargerPtr, int> *chrgrsUsed = new std::map<ChargerPtr, int>;
     std::shared_ptr<std::map<ChargerPtr, int>> chrgrsUsedPtr;
-    handle_necessaryCharging(chrgrsUsed, simTime);
-    handle_powerRequest(chrgrsUsed, powerRequest, simTime);
+    handle_necessaryCharging(powerConsumption, chrgrsUsed, simTime);
+    handle_powerRequest(powerConsumption, chrgrsUsed, powerRequest, simTime);
     chrgrsUsedPtr.reset(chrgrsUsed);
     _chrgrsUsedTime.push_back(chrgrsUsedPtr);
     handle_routes(simTime);
 
-    for (auto& bus: _buses)
-        powerConsumption += bus.second->get_consumpCharger(simTime);
+    _busToCharger.clear();
 
-    powerConsumption *= 60; // kWh to kW
     return powerConsumption;
 }
 
@@ -256,7 +256,7 @@ BusManager::file_dump()
 
 
 int
-BusManager::handle_necessaryCharging(std::map<ChargerPtr, int> *chrgrsUsed, time_t simTime)
+BusManager::handle_necessaryCharging(double& pwrConsump, std::map<ChargerPtr, int> *chrgrsUsed, time_t simTime)
 {
     int numPlugs, plugsInUse, ret;
     double chrgRate;
@@ -287,14 +287,17 @@ BusManager::handle_necessaryCharging(std::map<ChargerPtr, int> *chrgrsUsed, time
                         double energyToCharge = (busMaxSoc - busSoc) * busCap; // kWh
                         bus->command_power(energyToCharge*60, 60, simTime, PowerType::e_ATCHARGER);
                         _totalCharge += energyToCharge;
+                        pwrConsump += energyToCharge*60;
                     }
                     else if ( ret == UNDER_MIN_SOC ){
                         LOGDBG("Bus %i is below min SoC and charging", bus->get_identifier());
                         bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER, true);
                         _totalCharge += chrgRate / 60;
+                        pwrConsump += chrgRate;
                     }
                 } else {
                     _totalCharge += chrgRate / 60;
+                    pwrConsump += chrgRate;
                 }
             }
         }
@@ -306,28 +309,35 @@ BusManager::handle_necessaryCharging(std::map<ChargerPtr, int> *chrgrsUsed, time
 
 
 int
-BusManager::handle_powerRequest(std::map<ChargerPtr, int> *chrgrsUsed, double powerRequest, time_t simTime)
+BusManager::handle_powerRequest(double& pwrConsump, std::map<ChargerPtr, int> *chrgrsUsed, double powerRequest, time_t simTime)
 {
     int numPlugs, plugsInUse, ret;
-    double chrgRate;
+    double chrgRate, targetPwr;
     std::vector<Priority> priorities;
     std::map<BusPtr, bool> necessities;
 
-    for(auto& chrgr: _busSchedule){
-        numPlugs = chrgr.first->get_numPlugs();
-        plugsInUse = (*chrgrsUsed)[chrgr.first];
-        priorities = _priorities[chrgr.first];
-        necessities = _necessities[chrgr.first];
+    // Calculate Target to hit
+    targetPwr = powerRequest - pwrConsump;
 
-        // Priorities vector is in order so we charge the most necessary bus first
-        for (auto& priority : priorities){
-            BusPtr bus = priority.first;
-            double chargePriority = priority.second;
+    // Order all available buses by priority
+    for(auto& chrgr: _busSchedule){
+        auto append = _priorities[chrgr.first];
+        priorities.insert(priorities.end(), append.begin(), append.end());
+    }
+    std::sort(priorities.begin(), priorities.end(), compare_priority);
+
+    while ( std::fabs(targetPwr) >= 1e-5 && priorities.size() != 0 ){
+        if ( targetPwr > 0.0 ){
+            auto bus   = priorities.front().first;
+            auto chargePriority = priorities.front().second;
+            auto chrgr = _busToCharger[bus];
+            numPlugs   = chrgr->get_numPlugs();
+            plugsInUse = (*chrgrsUsed)[chrgr];
 
             if ( necessities[bus] == false && chargePriority > 0.0 && plugsInUse < numPlugs ){
-                plugsInUse++;
-                chrgRate = bus->get_chargeRate(); // kWh / min
-                chrgRate *= 60; // kW
+                (*chrgrsUsed)[chrgr]++;
+                chrgRate = std::min(bus->get_chargeRate()*60, targetPwr);
+                
                 ret = bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER);
                 if ( ret != 0 ){
                     if ( ret == OVER_MAX_SOC ){
@@ -337,18 +347,64 @@ BusManager::handle_powerRequest(std::map<ChargerPtr, int> *chrgrsUsed, double po
                         double energyToCharge = (busMaxSoc - busSoc) * busCap; // kWh
                         bus->command_power(energyToCharge*60, 60, simTime, PowerType::e_ATCHARGER);
                         _totalCharge += energyToCharge;
+                        pwrConsump += energyToCharge*60;
+                        targetPwr -= energyToCharge*60;
                     }
                     else if ( ret == UNDER_MIN_SOC ){
                         LOGDBG("Bus %i is below min SoC and charging", bus->get_identifier());
                         bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER, true);
                         _totalCharge += chrgRate / 60;
+                        pwrConsump += chrgRate;
+                        targetPwr -= chrgRate;
                     }
                 } else {
                     _totalCharge += chrgRate / 60;
+                    pwrConsump += chrgRate;
+                    targetPwr -= chrgRate;
                 }
             }
+
+            priorities.erase(priorities.begin());
+        } 
+        else if ( targetPwr < 0.0 ){
+            auto bus   = priorities.back().first;
+            auto chargePriority = priorities.back().second;
+            auto chrgr = _busToCharger[bus];
+            numPlugs   = chrgr->get_numPlugs();
+            plugsInUse = (*chrgrsUsed)[chrgr];
+            
+            if ( necessities[bus] == false && chargePriority < 0.0 && plugsInUse < numPlugs ){
+                (*chrgrsUsed)[chrgr]++;
+                chrgRate = std::max(-bus->get_chargeRate()*60, targetPwr);
+                
+                ret = bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER);
+                if ( ret != 0 ){
+                    if ( ret == OVER_MAX_SOC ){
+                        LOGDBG("Bus %i is above max SoC and discharging", bus->get_identifier());
+                        bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER, true);
+                        _totalCharge += chrgRate / 60;
+                        pwrConsump += chrgRate;
+                        targetPwr -= chrgRate;
+                    }
+                    else if ( ret == UNDER_MIN_SOC ){
+                        double busSoc = bus->get_stateOfCharge();
+                        double busCap = bus->get_capacity();
+                        double busMinSoc = bus->get_minSoc();
+                        double energyToDschrg = (busSoc - busMinSoc) * busCap; // kWh
+                        bus->command_power(energyToDschrg*60, 60, simTime, PowerType::e_ATCHARGER);
+                        _totalCharge += energyToDschrg;
+                        pwrConsump += energyToDschrg*60;
+                        targetPwr -= energyToDschrg*60;
+                    }
+                } else {
+                    _totalCharge += chrgRate / 60;
+                    pwrConsump += chrgRate;
+                    targetPwr -= chrgRate;
+                }
+            }
+
+            priorities.erase(--priorities.end());
         }
-        (*chrgrsUsed)[chrgr.first] = plugsInUse;
     }
 
     return 0;

@@ -45,6 +45,7 @@ private:
     std::map<ChargerPtr, std::map<int, std::vector<BusPtr>>> _busSchedule;
 
     // Unique for each timestep
+    std::map<BusPtr, ChargerPtr> _busToCharger;
     std::map<int, std::map<int, double>> _nextTripDist;
     std::map<ChargerPtr, std::map<BusPtr, int>> _nextDepart;
     std::map<ChargerPtr, std::vector<Priority>> _priorities;
@@ -55,8 +56,8 @@ private:
     std::vector<std::shared_ptr<std::map<ChargerPtr, double>>> _energyChargedTime;
 
     
-    int handle_necessaryCharging(std::map<ChargerPtr, int> *chrgrsUsed, time_t simTime);
-    int handle_powerRequest(std::map<ChargerPtr, int> *chrgrsUsed, double powerRequest, time_t simTime);
+    int handle_necessaryCharging(double& pwrConsump, std::map<ChargerPtr, int> *chrgrsUsed, time_t simTime);
+    int handle_powerRequest(double& pwrConsump, std::map<ChargerPtr, int> *chrgrsUsed, double powerRequest, time_t simTime);
     void handle_charging(double powerRequest, time_t simTime);
     void handle_routes(time_t simTime);
 
