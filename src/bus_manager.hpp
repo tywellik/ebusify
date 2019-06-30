@@ -17,8 +17,9 @@ namespace BUS {
 class BusManager 
 {
 public:
-    using Priority = std::pair<std::shared_ptr<Bus>, double>;
-    
+    using BusPtr     = std::shared_ptr<Bus>;
+    using ChargerPtr = std::shared_ptr<Charger>;
+    using Priority   = std::pair<BusPtr, double>;
     BusManager();
     ~BusManager();
 
@@ -38,26 +39,36 @@ public:
     void file_dump();
 
 private:
-    std::map<int, std::shared_ptr<Bus>> _buses;
-    std::map<int, std::shared_ptr<Charger>> _chargers;
+    double _totalCharge;
+    std::map<int, BusPtr> _buses;
+    std::map<int, ChargerPtr> _chargers;
+    std::map<ChargerPtr, std::map<int, std::vector<BusPtr>>> _busSchedule;
+
+    // Unique for each timestep
     std::map<int, std::map<int, double>> _nextTripDist;
-    std::map<std::shared_ptr<Charger>, std::map<int, std::vector<std::shared_ptr<Bus>>>> _busSchedule;
+    std::map<ChargerPtr, std::map<BusPtr, int>> _nextDepart;
+    std::map<ChargerPtr, std::vector<Priority>> _priorities;
+    std::map<ChargerPtr, std::map<BusPtr, bool>> _necessities;
 
     // Time Series Data per Charging Station
-    std::vector<std::shared_ptr<std::map<std::shared_ptr<Charger>, int>>> _chrgrsUsedTime;
-    std::vector<std::shared_ptr<std::map<std::shared_ptr<Charger>, double>>> _energyChargedTime;
+    std::vector<std::shared_ptr<std::map<BusPtr, double>>> _consumpTime;
+    std::vector<std::shared_ptr<std::map<ChargerPtr, int>>> _chrgrsUsedTime;
+    std::vector<std::shared_ptr<std::map<ChargerPtr, double>>> _energyChargedTime;
 
+    
+    int handle_necessaryCharging(std::map<ChargerPtr, int> *chrgrsUsed, time_t simTime);
+    int handle_powerRequest(std::map<ChargerPtr, int> *chrgrsUsed, double powerRequest, time_t simTime);
     void handle_charging(double powerRequest, time_t simTime);
     void handle_routes(time_t simTime);
 
-    static bool compare_busPtrs(std::shared_ptr<Bus> lhs, std::shared_ptr<Bus> rhs);
     static bool compare_priority(Priority lhs, Priority rhs);
 
     /** Returns a list of buses that require charging sorted by the rate at which they need to charge in kWh/min */
-    std::vector<Priority> get_priorities(std::shared_ptr<Charger> charger, time_t simTime);
+    int get_priorities(std::vector<Priority> &priorities, std::map<BusPtr, bool> &necessities, 
+                        ChargerPtr charger, time_t simTime);
 
-    int get_nextDepartureTime(std::shared_ptr<Charger> charger, int busId, int simTime);
-    std::map<std::shared_ptr<Bus>, int> get_nextDepartureTimes(std::shared_ptr<Charger> charger, int simTime);
+    int get_nextDepartureTime(ChargerPtr charger, int busId, int simTime);
+    std::map<BusPtr, int> get_nextDepartureTimes(ChargerPtr charger, int simTime);
 };
 
 }

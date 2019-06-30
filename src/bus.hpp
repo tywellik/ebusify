@@ -4,6 +4,12 @@
 
 namespace BUS {
 
+enum class PowerType {
+    e_ONROUTE = 1,
+    e_ATCHARGER = 2,
+    e_END
+};
+
 class Bus 
 {
 public:
@@ -22,11 +28,13 @@ public:
     double get_chargeRate() const {return _chargeRate;}
     double get_distFirstCharge() const {return _distFirstCharge;}
     double get_stateOfCharge() const {return _stateOfCharge;}
-    double get_stateOfCharge(int ts) const {return _socTime.find(ts)->second;}
+    double get_stateOfCharge(int ts) const;
+    double get_consumpCharger(int ts) const;
+    double get_consumpRoute(int ts) const;
     double get_minSoc() const {return _minSoc;}
     double get_maxSoc() const {return _maxSoc;}
 
-    int command_power(double power, double timestep, int simTime, bool force = false);
+    int command_power(double power, double timestep, int simTime, PowerType pt, bool force = false);
 
 private:
     int    _identifier;
@@ -39,6 +47,8 @@ private:
 
     double _stateOfCharge;
     std::map<int, double> _socTime;
+    std::map<int, double> _consumpChargerTime;
+    std::map<int, double> _consumpRouteTime;
     int _lastTsRun;
 };
 

@@ -1,6 +1,9 @@
 #include "utility_manager.hpp"
 #include <sstream>
 #include <iomanip>
+#include <iostream>
+#include <fstream>
+
 
 #define VERBOSE
 #define LOGERR(fmt, args...)   do{ fprintf(stderr, fmt "\n", ##args); }while(0)
@@ -138,13 +141,16 @@ UtilityManager::startup(double demandPower)
     int ret = run_optimization(numSources, runCosts, minCapacity, maxCapacity,
                                 plantNames, plantNames_on, plantNames_prod,
                                 arrayLoc, demandPower, sourceProd);
-
-    std::vector<std::pair<std::string, double>> prodVals;
+    
+    std::shared_ptr<std::map<std::string, double>> prodValPtr;
+    std::map<std::string, double> *prodVals = new std::map<std::string, double>;
     for (auto& src: _sourceNames)
     {
-        prodVals.push_back(std::pair<std::string, double>(src, sourceProd[src]));
+        (*prodVals)[src] = sourceProd[src];
     }
-    set_power(prodVals, true);
+    set_power(*prodVals, true);
+    prodValPtr.reset(prodVals);
+    _prodValsTime.push_back(prodValPtr);
     return ret;
 }
 
@@ -195,20 +201,23 @@ UtilityManager::power_request(double demandPower)
                                 plantNames, plantNames_on, plantNames_prod,
                                 arrayLoc, demandPower, sourceProd);
 
-    std::vector<std::pair<std::string, double>> prodVals;
+    std::shared_ptr<std::map<std::string, double>> prodValPtr;
+    std::map<std::string, double> *prodVals = new std::map<std::string, double>;
     for (auto& src: _sourceNames)
     {
-        prodVals.push_back(std::pair<std::string, double>(src, sourceProd[src]));
+        (*prodVals)[src] = sourceProd[src];
     }
-    set_power(prodVals);
+    set_power(*prodVals);
+    prodValPtr.reset(prodVals);
+    _prodValsTime.push_back(prodValPtr);
     return ret;
 }
 
 
 int 
-UtilityManager::set_power(std::vector<std::pair<std::string, double>> prod, bool overrideRamps)
+UtilityManager::set_power(std::map<std::string, double> prod, bool overrideRamps)
 {
-    for( auto& src : prod)
+    for (auto& src : prod)
     {
         //LOGDBG("Setting power for: %s to: %.2f", src.first.c_str(), src.second);
         _sources[src.first]->set_powerPoint(src.second, overrideRamps);
@@ -440,6 +449,32 @@ UtilityManager::register_uncontrolledSource(std::string src)
 }
 
 
+void
+UtilityManager::file_dump()
+{
+    std::ofstream outfile;
+    outfile.open("utility.csv");
+
+    outfile << ",";
+    for (auto& source: *_prodValsTime[0])
+        outfile << source.first << ",";
+    outfile << std::endl;
+
+    int simTime = 16200;
+    for (auto& prodMap: _prodValsTime){
+        outfile << simTime << ",";
+        for (auto& source: *prodMap){
+            outfile << source.second << ",";
+        }
+        outfile << std::endl;
+
+        simTime += 60;
+    }
+    outfile.close();
+
+}
+
+
 } /** namespace */
 
 // Expose overloaded init function
@@ -462,5 +497,6 @@ BOOST_PYTHON_MODULE(UtilityManager)
         .def("startup",             &NRG::UtilityManager::startup)
         .def("power_request",       &NRG::UtilityManager::power_request)
         .def("get_totalEmissions",  &NRG::UtilityManager::get_totalEmissions)
+        .def("file_dump",           &NRG::UtilityManager::file_dump)
     ;
 }

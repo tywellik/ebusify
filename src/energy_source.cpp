@@ -49,14 +49,14 @@ EnergySource::get_minOutputPower() const
 double
 EnergySource::get_maxPositiveRamp() const
 {
-    return _maxPositiveRamp;
+    return _maxPositiveRamp / 100.0;
 }
 
 
 double
 EnergySource::get_maxNegativeRamp() const
 {
-    return _maxNegativeRamp;
+    return _maxNegativeRamp / 100.0;
 }
 
 

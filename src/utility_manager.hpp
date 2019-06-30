@@ -19,6 +19,8 @@ namespace NRG {
 class UtilityManager 
 {
 public:
+    using ProdPtr = std::shared_ptr<double>;
+
     UtilityManager();
     ~UtilityManager();
 
@@ -35,11 +37,13 @@ public:
 
     int power_request(double demandPower);
 
-    int set_power(std::vector<std::pair<std::string, double>> prod, bool overrideRamps = false);
+    int set_power(std::map<std::string, double> prod, bool overrideRamps = false);
 
     bp::tuple get_totalEmissions();
 
     int register_uncontrolledSource(std::string src);
+
+    void file_dump();
 
 private:
     std::vector<double> _pvProduction;
@@ -47,6 +51,9 @@ private:
     std::vector<std::string> _sourceNames;
     std::vector<std::string> _ucSourceNames;
     std::map<std::string, std::shared_ptr<EnergySource>> _sources;
+
+    // Time Series Data
+    std::vector<std::shared_ptr<std::map<std::string, double>>> _prodValsTime;
 
     int run_optimization(int numSources, double* runCosts, double* minCapacity, double* maxCapacity,
                             std::string* plantNames, std::string* plantNames_on, std::string* plantNames_prod,

@@ -19,6 +19,8 @@
 namespace BUS {
 
 BusManager::BusManager()
+:
+    _totalCharge(0.0)
 {}
 
 
@@ -39,17 +41,17 @@ BusManager::init_chargers(bpn::ndarray const& chargerIds, bpn::ndarray const& ch
     int* chrgIds   = reinterpret_cast<int*>(chargerIds.get_data());
     int* numPlugs  = reinterpret_cast<int*>(numberPlugs.get_data());
 
-    //std::map<int, std::shared_ptr<Charger>> _chargers;
+    //std::map<int, ChargerPtr> _chargers;
     for (int line = 0; line < dataLen; ++line){
         int chrgId = chrgIds[line];
         std::string chargerName = std::string(bp::extract<char const *>(chargerNames[line]));
-        std::shared_ptr<Charger> chrgPtr;
+        ChargerPtr chrgPtr;
 
         // If charging station is new, add it to the map
         if ( _chargers.find(chrgId) == _chargers.end() ){
             Charger *charger = new Charger(chrgId, chargerName, numPlugs[line]);
             chrgPtr.reset(charger);    
-            _chargers.insert(std::pair<int, std::shared_ptr<Charger>>(chrgId, chrgPtr));
+            _chargers.insert(std::pair<int, ChargerPtr>(chrgId, chrgPtr));
         } else {
             chrgPtr = _chargers[chrgId];
         }
@@ -79,10 +81,10 @@ BusManager::init_buses(bpn::ndarray const& busIdentifiers, bpn::ndarray const& c
     {
         // If bus is new, add it to the map
         if ( _buses.find(busIds[line]) == _buses.end() ){
-            std::shared_ptr<Bus> busPtr;
+            BusPtr busPtr;
             Bus *bus = new Bus(busIds[line], caps[line], consumpRates[line], chrgRates[line], distFirstChrg[line]);
             busPtr.reset(bus);
-            _buses.insert(std::pair<int, std::shared_ptr<Bus>>(busIds[line], busPtr));
+            _buses.insert(std::pair<int, BusPtr>(busIds[line], busPtr));
         }
     }
 
@@ -122,8 +124,8 @@ BusManager::init_schedule(bpn::ndarray const& routeIdentifiers, bpn::ndarray con
 
     LOGDBG("Parsing Bus Schedule");
     for (int line = 0; line < dataLen; ++line){
-        std::shared_ptr<Charger> chrgPtr;
-        std::shared_ptr<Bus> busPtr;
+        ChargerPtr chrgPtr;
+        BusPtr busPtr;
 
         // If charging station is new, add it to the map
         if ( _chargers.find(chargerIds[line]) == _chargers.end() ){
@@ -158,10 +160,32 @@ int
 BusManager::run(double powerRequest, time_t simTime)
 {
     if ( (simTime % 3600) == 0)
-        std::cout << "Sim Time: " << simTime << std::endl;
+        std::cout << "Sim Time: " << simTime/3600 << std::endl;
 
-    handle_charging(powerRequest, simTime);
-    //handle_discharge();
+    std::vector<Priority> priorities;
+    std::map<BusPtr, bool> necessities;
+
+    // Get departure times for all buses at each charging station
+    for (auto& chrgr: _chargers){
+        //std::cout << "Bork" << std::endl;
+        _nextDepart[chrgr.second] = get_nextDepartureTimes(chrgr.second, simTime);
+        get_priorities(priorities, necessities, chrgr.second, simTime);
+        //for (auto& bus: priorities){
+        //    if (bus.first->get_identifier() == 1)
+        //        std::cout << "In this list" << std::endl;
+        //}
+        _priorities[chrgr.second] = priorities;
+        _necessities[chrgr.second] = necessities;
+        priorities.clear();
+        necessities.clear();
+    }
+
+    std::map<ChargerPtr, int> *chrgrsUsed = new std::map<ChargerPtr, int>;
+    std::shared_ptr<std::map<ChargerPtr, int>> chrgrsUsedPtr;
+    handle_necessaryCharging(chrgrsUsed, simTime);
+    handle_powerRequest(chrgrsUsed, powerRequest, simTime);
+    chrgrsUsedPtr.reset(chrgrsUsed);
+    _chrgrsUsedTime.push_back(chrgrsUsedPtr);
     handle_routes(simTime);
 
     return 0;
@@ -172,8 +196,9 @@ void
 BusManager::file_dump()
 {
     std::ofstream outfile;
-    outfile.open("charger_usage.csv");
 
+    /** Charger Usage */
+    outfile.open("charger_usage.csv");
     outfile << ",";
     for (auto& chrgr: *_chrgrsUsedTime[0])
         outfile << chrgr.first->get_name() << ",";
@@ -193,6 +218,7 @@ BusManager::file_dump()
     }
     outfile.close();
 
+    /** Bus SOC */
     outfile.open("bus_soc.csv");
     outfile << ",";
     for (auto& bus: _buses)
@@ -205,59 +231,143 @@ BusManager::file_dump()
             outfile << bus.second->get_stateOfCharge(simTime) << ",";
         outfile << std::endl;
     }
+    outfile.close();
+
+    /** Bus Energy Usage */
+    outfile.open("bus_energy.csv");
+    outfile << ",";
+    for (auto& bus: _buses)
+        outfile << bus.second->get_identifier() << ",";
+    outfile << std::endl;
+
+    for (simTime = 16200; simTime < 16200 + 3600*24; simTime+=60){
+        outfile << simTime << ",";
+        for (auto& bus: _buses)
+            outfile << bus.second->get_consumpCharger(simTime) << ",";
+        outfile << std::endl;
+    }
+    outfile.close();
+
+    /** Bus Route Usage */
+    outfile.open("bus_route.csv");
+    outfile << ",";
+    for (auto& bus: _buses)
+        outfile << bus.second->get_identifier() << ",";
+    outfile << std::endl;
+
+    for (simTime = 16200; simTime < 16200 + 3600*24; simTime+=60){
+        outfile << simTime << ",";
+        for (auto& bus: _buses)
+            outfile << bus.second->get_consumpRoute(simTime) << ",";
+        outfile << std::endl;
+    }
+    outfile.close();
+
+    std::cout << "Total Charge: " << _totalCharge << std::endl;
 
     return;
 }
 
 
-void
-BusManager::handle_charging(double powerRequest, time_t simTime)
+//std::map<BUS::BusManager::ChargerPtr, int> *
+int
+BusManager::handle_necessaryCharging(std::map<ChargerPtr, int> *chrgrsUsed, time_t simTime)
 {
     int numPlugs, plugsInUse, ret;
     double chrgRate;
     std::vector<Priority> priorities;
-    std::shared_ptr<std::map<std::shared_ptr<Charger>, int>> chrgrsUsedPtr;
-    std::map<std::shared_ptr<Charger>, int> *chrgrsUsed = new std::map<std::shared_ptr<Charger>, int>;
-    chrgrsUsedPtr.reset(chrgrsUsed);
+    std::map<BusPtr, bool> necessities;
+    //std::map<ChargerPtr, int> *chrgrsUsed = new std::map<ChargerPtr, int>;
 
     for(auto& chrgr: _busSchedule){
-        //std::cout << "Charger: " << chrgr.first->get_name() << "\t";
-        //std::cout << "Charger: " << chrgr.first->get_name() << "\n";
-
         numPlugs = chrgr.first->get_numPlugs();
         plugsInUse = 0;
-        priorities = get_priorities(chrgr.first, simTime);
+        priorities = _priorities[chrgr.first];
+        necessities = _necessities[chrgr.first];
 
+        // Priorities vector is in order so we charge the most necessary bus first
         for (auto& priority : priorities){
-            std::shared_ptr<Bus> bus = priority.first;
-            double chargePriority = priority.second;
+            BusPtr bus = priority.first;
 
-            if ( chargePriority > 0.0 && plugsInUse < numPlugs){
+            if ( necessities[bus] == true && plugsInUse < numPlugs ){
                 plugsInUse++;
                 chrgRate = bus->get_chargeRate(); // kWh / min
                 chrgRate *= 60; // kW
-                ret = bus->command_power(chrgRate, 60, simTime);
+                ret = bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER);
+                if ( ret != 0 ){
+                    if ( ret == OVER_MAX_SOC ){
+                        std::cout << "Command would place bus over max SOC" << std::endl;
+                        double busSoc = bus->get_stateOfCharge();
+                        double busCap = bus->get_capacity();
+                        double busMaxSoc = bus->get_maxSoc();
+                        double energyToCharge = (busMaxSoc - busSoc) * busCap; // kWh
+                        bus->command_power(energyToCharge*60, 60, simTime, PowerType::e_ATCHARGER);
+                        _totalCharge += energyToCharge;
+                    }
+                    else if ( ret == UNDER_MIN_SOC ){
+                        LOGDBG("Bus %i is below min SoC and charging", bus->get_identifier());
+                        bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER, true);
+                        _totalCharge += chrgRate / 60;
+                    }
+                } else {
+                    _totalCharge += chrgRate / 60;
+                }
+            }
+        }
+        (*chrgrsUsed)[chrgr.first] = plugsInUse;
+    }
+
+    return 0;
+}
+
+
+int
+BusManager::handle_powerRequest(std::map<ChargerPtr, int> *chrgrsUsed, double powerRequest, time_t simTime)
+{
+    int numPlugs, plugsInUse, ret;
+    double chrgRate;
+    std::vector<Priority> priorities;
+    std::map<BusPtr, bool> necessities;
+
+    for(auto& chrgr: _busSchedule){
+        numPlugs = chrgr.first->get_numPlugs();
+        plugsInUse = (*chrgrsUsed)[chrgr.first];
+        priorities = _priorities[chrgr.first];
+        necessities = _necessities[chrgr.first];
+
+        // Priorities vector is in order so we charge the most necessary bus first
+        for (auto& priority : priorities){
+            BusPtr bus = priority.first;
+            double chargePriority = priority.second;
+
+            if ( necessities[bus] == false && chargePriority > 0.0 && plugsInUse < numPlugs ){
+                plugsInUse++;
+                chrgRate = bus->get_chargeRate(); // kWh / min
+                chrgRate *= 60; // kW
+                ret = bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER);
                 if ( ret != 0 ){
                     if ( ret == OVER_MAX_SOC ){
                         double busSoc = bus->get_stateOfCharge();
                         double busCap = bus->get_capacity();
                         double busMaxSoc = bus->get_maxSoc();
                         double energyToCharge = (busMaxSoc - busSoc) * busCap; // kWh
-                        bus->command_power(energyToCharge*60, 60, simTime);
+                        bus->command_power(energyToCharge*60, 60, simTime, PowerType::e_ATCHARGER);
+                        _totalCharge += energyToCharge;
                     }
                     else if ( ret == UNDER_MIN_SOC ){
                         LOGDBG("Bus %i is below min SoC and charging", bus->get_identifier());
-                        bus->command_power(chrgRate, 60, simTime, true);
+                        bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER, true);
+                        _totalCharge += chrgRate / 60;
                     }
+                } else {
+                    _totalCharge += chrgRate / 60;
                 }
             }
         }
-
-        //std::cout << "Chargers in use: " << plugsInUse << std::endl << std::endl;
         (*chrgrsUsed)[chrgr.first] = plugsInUse;
     }
 
-    _chrgrsUsedTime.push_back(chrgrsUsedPtr);
+    return 0;
 }
 
 
@@ -272,9 +382,9 @@ BusManager::handle_routes(time_t simTime)
     double busEff, busTripDist, reqdEnrgForTrip;
 
     for(auto& chrgr: _busSchedule){
-        std::vector<std::shared_ptr<Bus>> first = chrgr.second[simTime-60];
-        std::vector<std::shared_ptr<Bus>> second = chrgr.second[simTime];
-        std::vector<std::shared_ptr<Bus>> departures(first.size());
+        std::vector<BusPtr> first = chrgr.second[simTime-60];
+        std::vector<BusPtr> second = chrgr.second[simTime];
+        std::vector<BusPtr> departures(first.size());
 
         // Pretty weird to sort by pointer address but it works
         std::sort(first.begin(), first.end());
@@ -283,8 +393,6 @@ BusManager::handle_routes(time_t simTime)
         auto it = std::set_difference(first.begin(), first.end(), second.begin(), second.end(), departures.begin());
         departures.resize(it-departures.begin());
 
-        //if ( departures.size() >= 1 )
-            //std::cout << chrgr.first->get_name() << " Departures: " << departures.size() << std::endl << "\t";
         for (auto& bus: departures){
             busId = bus->get_identifier();
             // Get bus kWh,mi
@@ -294,22 +402,11 @@ BusManager::handle_routes(time_t simTime)
             // Calc necessary kWh to make next trip
             reqdEnrgForTrip = busTripDist * busEff;
 
-            //std::cout << busId << ": " << reqdEnrgForTrip << " kWh, ";
-
-            int ret = bus->command_power(-reqdEnrgForTrip, 3600, simTime);
+            int ret = bus->command_power(-reqdEnrgForTrip, 3600, simTime, PowerType::e_ONROUTE);
             if ( ret != 0 )
                 std::cout << "Bus " << busId << ": Not enough energy for route" << std::endl;
         }
-        //if ( departures.size() >= 1 )
-            //std::cout << std::endl;
     }
-}
-
-
-// Compares two bus pointers
-bool
-BusManager::compare_busPtrs(std::shared_ptr<Bus> lhs, std::shared_ptr<Bus> rhs){
-    return (lhs->get_identifier() < rhs->get_identifier());
 }
 
 
@@ -320,18 +417,18 @@ BusManager::compare_priority(Priority lhs, Priority rhs){
 }
 
 
-std::vector<BusManager::Priority>
-BusManager::get_priorities(std::shared_ptr<Charger> charger, time_t simTime)
+int
+BusManager::get_priorities(std::vector<Priority> &priorities, std::map<BusPtr, bool> &necessities, 
+                            ChargerPtr charger, time_t simTime)
 {
     int busId;
     double busSoc, busCap, busEff, busTripDist;
-    double reqdEnrgForTrip, reqdEnrgBforTrip, reqdChrgRate;
-    std::map<std::shared_ptr<Bus>, int> nextDepart;
+    double reqdEnrgForTrip, reqdEnrgBeforeTrip, reqdChrgRate, normPriority;
+    std::map<BusPtr, int> nextDepart;
 
     // Get departure times for all buses at this charger
-    nextDepart = get_nextDepartureTimes(charger, simTime);
+    nextDepart = _nextDepart[charger];
 
-    std::vector<Priority> priorities;
     for (auto& bus: _busSchedule[charger][simTime]){
         // Get bus ID
         busId = bus->get_identifier();
@@ -339,18 +436,30 @@ BusManager::get_priorities(std::shared_ptr<Charger> charger, time_t simTime)
         busSoc = bus->get_stateOfCharge();
         // Get bus capacity
         busCap = bus->get_capacity();
-        // Get bus kWh,mi
+        // Get bus kWh/mi
         busEff = bus->get_consumptionRate();
         // Get bus next travel distance
         busTripDist = _nextTripDist[busId][nextDepart[bus]];
         // Calc necessary kWh to make next trip
-        reqdEnrgForTrip = busTripDist * busEff * 1.5;
+        reqdEnrgForTrip = busTripDist * busEff;
         // Calc kWh required minus kWh already have
-        reqdEnrgBforTrip = reqdEnrgForTrip - (busSoc - bus->get_minSoc()) * busCap;
+        reqdEnrgBeforeTrip = reqdEnrgForTrip - (busSoc - bus->get_minSoc()) * busCap;
         // Calc necessary kWh/min to achieve necessary kWh before charge end time
-        reqdChrgRate = reqdEnrgBforTrip / ((nextDepart[bus] - simTime)/60);
+        normPriority = (reqdEnrgBeforeTrip / ((nextDepart[bus] - simTime)/60)) / bus->get_chargeRate();
         // Push bus id and kWh/min to priorities vector
-        priorities.push_back(Priority(bus, reqdChrgRate));
+        priorities.push_back(Priority(bus, normPriority));
+        // Calc necessary kWh/min for next time step to achieve necessary kWh before charge end time
+        reqdChrgRate = reqdEnrgBeforeTrip / ((nextDepart[bus] - (simTime + 59.9))/60);
+        if ( reqdChrgRate > bus->get_chargeRate() ){
+            necessities[bus] = true;
+            /*std::cout << "Bus " << bus->get_identifier() << " needs to charge" << std::endl;
+            std::cout << "\tBus Energy: " << (busSoc-0.1) * busCap 
+                      << "\tTrip Energy: " << reqdEnrgForTrip 
+                      << "\tCharge Rate: " << reqdChrgRate 
+                      << "\tTime To Trip: " << ((nextDepart[bus] - simTime)/60) << std::endl;
+        */}
+        else
+            necessities[bus] = false;        
     }
     // Sort in descending charge rate order
     std::sort(priorities.begin(), priorities.end(), compare_priority);
@@ -360,17 +469,17 @@ BusManager::get_priorities(std::shared_ptr<Charger> charger, time_t simTime)
                   << std::fixed << std::setprecision(3) << bus.second << " kWh/min" << std::endl;
     } */
 
-    return priorities;
+    return 0;
 }
 
 
-std::map<std::shared_ptr<Bus>, int>
-BusManager::get_nextDepartureTimes(std::shared_ptr<Charger> charger, int simTime)
+std::map<BUS::BusManager::BusPtr, int>
+BusManager::get_nextDepartureTimes(ChargerPtr charger, int simTime)
 {
-    std::vector<std::shared_ptr<Bus>> primSet = _busSchedule[charger][simTime];
-    std::vector<std::shared_ptr<Bus>> currSet;
-    std::vector<std::shared_ptr<Bus>> departures(primSet.size());
-    std::map<std::shared_ptr<Bus>, int> ret;
+    std::vector<BusPtr> primSet = _busSchedule[charger][simTime];
+    std::vector<BusPtr> currSet;
+    std::vector<BusPtr> departures(primSet.size());
+    std::map<BusPtr, int> ret;
 
     while (primSet.size() > 0){
         simTime += 60;
@@ -398,13 +507,13 @@ BusManager::get_nextDepartureTimes(std::shared_ptr<Charger> charger, int simTime
 
 
 int
-BusManager::get_nextDepartureTime(std::shared_ptr<Charger> charger, int busId, int simTime)
+BusManager::get_nextDepartureTime(ChargerPtr charger, int busId, int simTime)
 {
-    std::map<int, std::vector<std::shared_ptr<Bus>>> chargingTimes; // Map of charging times and busses at those times
+    std::map<int, std::vector<BusPtr>> chargingTimes; // Map of charging times and busses at those times
     chargingTimes = _busSchedule[charger];
 
     int srchTime = simTime;
-    std::shared_ptr<Bus> srchBus = _buses[busId];
+    BusPtr srchBus = _buses[busId];
     auto it = std::find(chargingTimes[srchTime].begin(), chargingTimes[srchTime].end(), srchBus);
     assert(it != chargingTimes[srchTime].end());
 
