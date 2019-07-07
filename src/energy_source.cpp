@@ -10,7 +10,10 @@ EnergySource::EnergySource(struct EnergySourceParameters const &esp)
     _maxPositiveRamp(esp.rampRate),
     _maxNegativeRamp(esp.rampRate),
     _runCost(esp.runCost),
-    _currPowerOutput(0.0)
+    _rampCost(esp.rampCost),
+    _startupCost(esp.startupCost),
+    _currPowerOutput(0.0),
+    _currState(SourceState::e_SSOFF)
 {}
 
 

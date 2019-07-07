@@ -21,11 +21,19 @@ enum EnergyFuels {
 };
 
 struct EnergySourceParameters {
-    std::string name;         /** Plant name         */
+    std::string  name;         /** Plant name         */
     double       maxCapacity;  /** MW                 */
     double       minCapacity;  /** % Max output power */
     double       runCost;      /** $/MWh              */
-    double       rampRate;     /** %maxCapacity/min   */
+    double       rampRate;     /** % maxCapacity/min  */
+    double       rampCost;     /** $ / delta MW       */
+    double       startupCost;  /** $ / delta MW       */
+};
+
+enum SourceState {
+    e_SSOFF = 0,
+    e_SSON  = 1,
+    e_SSEND
 };
 
 class EnergySource
@@ -36,11 +44,14 @@ public:
 
     std::string get_name() const;
     double get_powerCost() const;
+    double get_rampCost() const {return _rampCost;}
+    double get_startupCost() const {return _startupCost;}
     double get_maxOutputPower() const;
     double get_minOutputPower() const;
     double get_maxPositiveRamp() const;
     double get_maxNegativeRamp() const;
     double get_currPower() const;
+    SourceState get_currState() const {return _currState;}
 
     void set_powerPoint(double power, bool overrideRamps = false);
 
@@ -73,11 +84,13 @@ protected:
     std::string _name;            /** Plant name */
     double      _maxOutputPower;  /** MW                 */
     double      _minOutputPower;  /** % Max output power */
-    double      _maxPositiveRamp; /** %maxCapacity/min   */
-    double      _maxNegativeRamp; /** %maxCapacity/min   */
+    double      _maxPositiveRamp; /** % maxCapacity/min  */
+    double      _maxNegativeRamp; /** % maxCapacity/min  */
     double      _runCost;         /** $/MWh              */
-
+    double      _rampCost;        /** $ / delta MW       */
+    double      _startupCost;     /** $ / delta MW       */
     double      _currPowerOutput; /** MW                 */
+    SourceState _currState;       /** On / Off           */
 };
 
 

@@ -199,7 +199,7 @@ BusManager::file_dump()
     std::ofstream outfile;
 
     /** Charger Usage */
-    outfile.open("charger_usage.csv");
+    outfile.open("output/charger_usage.csv");
     outfile << ",";
     for (auto& chrgr: *_chrgrsUsedTime[0])
         outfile << chrgr.first->get_name() << ",";
@@ -218,7 +218,7 @@ BusManager::file_dump()
     outfile.close();
 
     /** Bus SOC */
-    outfile.open("bus_soc.csv");
+    outfile.open("output/bus_soc.csv");
     outfile << ",";
     for (auto& bus: _buses)
         outfile << bus.second->get_identifier() << ",";
@@ -233,7 +233,7 @@ BusManager::file_dump()
     outfile.close();
 
     /** Bus Energy Usage */
-    outfile.open("bus_energy.csv");
+    outfile.open("output/bus_energy.csv");
     outfile << ",";
     for (auto& bus: _buses)
         outfile << bus.second->get_identifier() << ",";
@@ -248,7 +248,7 @@ BusManager::file_dump()
     outfile.close();
 
     /** Bus Route Usage */
-    outfile.open("bus_route.csv");
+    outfile.open("output/bus_route.csv");
     outfile << ",";
     for (auto& bus: _buses)
         outfile << bus.second->get_identifier() << ",";
@@ -265,6 +265,14 @@ BusManager::file_dump()
     std::cout << "Total Charge: " << _totalCharge << std::endl;
 
     return;
+}
+
+
+void
+BusManager::clear_memory()
+{
+    _chrgrsUsedTime.clear();
+    _energyChargedTime.clear();
 }
 
 
@@ -647,5 +655,6 @@ BOOST_PYTHON_MODULE(BusManager)
         .def("init_schedule", &BUS::BusManager::init_schedule)
         .def("run",           &BUS::BusManager::run)
         .def("file_dump",     &BUS::BusManager::file_dump)
+        .def("clear_memory",  &BUS::BusManager::clear_memory)
     ;
 }

@@ -38,6 +38,8 @@ public:
 
     void file_dump();
 
+    void clear_memory();
+
 private:
     double _totalCharge;
     std::map<int, BusPtr> _buses;
