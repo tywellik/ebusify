@@ -262,7 +262,7 @@ BusManager::file_dump()
     }
     outfile.close();
 
-    std::cout << "Total Charge: " << _totalCharge << std::endl;
+    LOGDBG("Total Charge: %.2f", _totalCharge);
 
     return;
 }
@@ -301,7 +301,7 @@ BusManager::handle_necessaryCharging(double& pwrConsump, std::map<ChargerPtr, in
                 ret = bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER);
                 if ( ret != 0 ){
                     if ( ret == OVER_MAX_SOC ){
-                        std::cout << "Command would place bus over max SOC" << std::endl;
+                        std::cout << simTime << ":\tBus " << bus->get_identifier() << ": Command would place bus over max SOC" << std::endl;
                         double busSoc = bus->get_stateOfCharge();
                         double busCap = bus->get_capacity();
                         double busMaxSoc = bus->get_maxSoc();
