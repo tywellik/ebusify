@@ -125,7 +125,7 @@ UtilityManager::startup(double demandPower)
         plantNames_prod[k]    = src + "_cost";
         plantNames_indOn[k]   = src + "_indOn";
         plantNames_indProd[k] = src + "_indProd";
-        runCosts[k]         = _sources[src]->get_powerCost();
+        runCosts[k]         = _sources[src]->get_powerCost() / 60.0; // Divide by 60 MWh -> MW minutes
         rampCosts[k]        = 0.0;
         startUpCosts[k]     = 0.0;
         minCapacity[k]      = _sources[src]->get_minOutputPower();
@@ -192,7 +192,7 @@ UtilityManager::power_request(double demandPower)
         plantNames_prod[k]    = src + "_cost";
         plantNames_indOn[k]   = src + "_indOn";
         plantNames_indProd[k] = src + "_indProd";
-        runCosts[k]         = _sources[src]->get_powerCost();
+        runCosts[k]         = _sources[src]->get_powerCost() / 60.0; // Divide by 60 MWh -> MW minutes
         rampCosts[k]        = _sources[src]->get_rampCost();
         startUpCosts[k]     = _sources[src]->get_startupCost();
         double maxRampDown  = _sources[src]->get_maxNegativeRamp()*_sources[src]->get_maxOutputPower();
@@ -209,13 +209,13 @@ UtilityManager::power_request(double demandPower)
         if (ucSrc.compare("Wind_(aggregated)_-_base_case") == 0){
             LOGDBG("Setting max wind to:  %f", _windProduction.front());
             maxCapacity[arrayLoc[ucSrc]] = _windProduction.front();
-            minCapacity[arrayLoc[ucSrc]] = _windProduction.front();
+            //minCapacity[arrayLoc[ucSrc]] = _windProduction.front();
             _windProduction.erase(_windProduction.begin());
         }
         if (ucSrc.compare("Solar_(aggregated)_-_base_case") == 0){
             LOGDBG("Setting max solar to: %f", _pvProduction.front());
             maxCapacity[arrayLoc[ucSrc]] = _pvProduction.front();
-            minCapacity[arrayLoc[ucSrc]] = _pvProduction.front();
+            //minCapacity[arrayLoc[ucSrc]] = _pvProduction.front();
             _pvProduction.erase(_pvProduction.begin());
         }
     }
@@ -243,8 +243,9 @@ UtilityManager::set_power(std::map<std::string, double> prod, bool overrideRamps
 {
     for (auto& src : prod)
     {
-        //LOGDBG("Setting power for: %s to: %.2f", src.first.c_str(), src.second);
+        LOGDBG("Setting power for: %s to: %.2f", src.first.c_str(), src.second);
         _sources[src.first]->set_powerPoint(src.second, overrideRamps);
+        LOGDBG("Power point for: %s to:vv %.2f", src.first.c_str(), _sources[src.first]->get_currPower());
     }
 }
 
@@ -272,7 +273,7 @@ UtilityManager::run_optimization(int numSources, double* runCosts, double* rampC
                                  std::string* plantNames, std::string* plantNames_on, std::string* plantNames_prod, std::string* plantNames_indOn, std::string* plantNames_indProd,
                                  std::map<std::string, int> arrayLoc, double demandPower, std::map<std::string, double>& sourceProd)
 {
-    int k, optSuccess;
+    int k, optSuccess = 0;
 
     double maxNegCapacity[numSources];
     for (int i=0; i < numSources; i++){
@@ -319,9 +320,11 @@ UtilityManager::run_optimization(int numSources, double* runCosts, double* rampC
             prod_b[k] = _sourcePrevProduction[_sourceNames[k]] - production[k];
             on_a[k]   = plantOn[k] - (int)_sourcePrevState[_sourceNames[k]];
             on_b[k]   = (int)_sourcePrevState[_sourceNames[k]] - plantOn[k];
-            costTotal += ( (runCosts[k] * production[k] * plantOn[k]) 
-                      + ((prod_a[k]*prodInd[k] + prod_b[k]*(1-prodInd[k])) * rampCosts[k]) 
-                      + ((on_a[k]*onInd[k] + on_b[k]*(1-onInd[k]))*0.5*minCapacity[k]*startupCosts[k]) );
+            costTotal += ( (runCosts[k] * production[k] * plantOn[k])
+                      //+ ((prod_a[k]*prodInd[k] + prod_b[k]*(1-prodInd[k])) * rampCosts[k])
+                      + ((prod_a[k] * prodInd[k]) * rampCosts[k])
+                      //+ ((on_a[k]*onInd[k] + on_b[k]*(1-onInd[k]))*0.5*minCapacity[k]*startupCosts[k]) );
+                      + ((on_a[k] * onInd[k]) * minCapacity[k] * startupCosts[k]) );
         }
         model.setObjective(costTotal, GRB_MINIMIZE);
 
@@ -333,6 +336,8 @@ UtilityManager::run_optimization(int numSources, double* runCosts, double* rampC
                 model.addConstr(plantOn[k] == 1,                                plantNames[k] + "_SolarOn");
             if (plantNames[k].compare("Wind_(aggregated)_-_base_case") == 0)
                 model.addConstr(plantOn[k] == 1,                                plantNames[k] + "_WindOn");
+            if (minCapacity[k] > _sources[_sourceNames[k]]->get_minOutputPower())
+                model.addConstr(plantOn[k] == 1,                                plantNames[k] + "_NoTurnOff");
             proTotal += production[k] * plantOn[k];
             model.addConstr((production[k] - maxCapacity[k]) <= 0,              plantNames[k] + "_NoOverProd");
             model.addConstr((production[k] - minCapacity[k] * plantOn[k]) >= 0, plantNames[k] + "_OffOrGtMinCap");
@@ -341,10 +346,12 @@ UtilityManager::run_optimization(int numSources, double* runCosts, double* rampC
             model.addQConstr(prod_b[k] * (1-prodInd[k]) >= 0,                   plantNames[k] + "_prod_b");
             model.addQConstr(on_a[k] * onInd[k] >= 0,                           plantNames[k] + "_on_a");
             model.addQConstr(on_b[k] * (1-onInd[k]) >= 0,                       plantNames[k] + "_on_b");
+
+            //model.addQConstr(((1-plantOn[k]) * production[k]) == 0,             plantNames[k] + "_phantomRamp");
         }
-        //model.addQConstr(proTotal >= demandPower*0.99, "DemandConstraintMin");
-        //model.addQConstr(proTotal <= demandPower*1.01, "DemandConstraintMax");
-        model.addQConstr(proTotal == demandPower, "DemandConstraintMax");
+        model.addQConstr(proTotal >= demandPower, "DemandConstraintMax");
+        model.addQConstr(proTotal <= demandPower*1.05, "DemandConstraintMax");
+        //model.addQConstr(proTotal == demandPower, "DemandConstraintMax");
         
         // First, close all plants
         for (k = 0; k < numSources; ++k)
@@ -552,11 +559,25 @@ UtilityManager::file_dump()
 }
 
 
+double
+UtilityManager::get_totalCost()
+{
+    double totalCost = 0.0;
+    for (auto& cost: _costValsTime)
+        totalCost += cost;
+    
+    return totalCost;
+}
+
 void
 UtilityManager::clear_memory()
 {
     _costValsTime.clear();
     _prodValsTime.clear();
+
+    for( auto& src: _sources ){
+        src.second->reset();
+    }
 }
 
 
@@ -585,6 +606,7 @@ BOOST_PYTHON_MODULE(UtilityManager)
         .def("power_request",       &NRG::UtilityManager::power_request)
         .def("get_totalEmissions",  &NRG::UtilityManager::get_totalEmissions)
         .def("file_dump",           &NRG::UtilityManager::file_dump)
+        .def("get_totalCost",       &NRG::UtilityManager::get_totalCost)
         .def("clear_memory",        &NRG::UtilityManager::clear_memory)
     ;
 }

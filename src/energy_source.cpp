@@ -77,12 +77,20 @@ EnergySource::set_powerPoint(double power, bool overrideRamps)
     if (!overrideRamps) {
         double maxPosChange = _maxOutputPower * _maxPositiveRamp;
         double maxNegChange = _maxOutputPower * _maxNegativeRamp;
-        setPower = std::max(std::min(_currPowerOutput + maxPosChange, _currPowerOutput), _currPowerOutput - maxNegChange);
+        setPower = std::max(std::min(_currPowerOutput + maxPosChange, power), _currPowerOutput - maxNegChange);
     }
     else
         setPower = power;
     
     _currPowerOutput = setPower;
+}
+
+
+void
+EnergySource::reset()
+{
+    _currPowerOutput = 0.0;
+    _currState       = SourceState::e_SSOFF;
 }
 
 } // namespace NRG

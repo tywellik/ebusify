@@ -55,6 +55,8 @@ public:
 
     void set_powerPoint(double power, bool overrideRamps = false);
 
+    void reset();
+
     struct Emissions {
         double carbonDioxide;
         double methane;

@@ -26,16 +26,14 @@ rampCosts  = df_utilSources['Ramping Cost'].astype('double')
 startCosts = df_utilSources['Startup Cost'].astype('double')
 
 df_nonBusConsump = pd.read_csv('../resrc/other/non_bus_consump.csv', index_col='Hour')
+df_nonBusConsump.reset_index(inplace=True)
 
 ##################################################
-#          Initializing Utility Manager          #
+#                  Moving Mean                   #
 ##################################################
-AustinEnergy = UtilityManager.UtilityManager()
-AustinEnergy.init(names.values, types.values, maxCaps.values,
-                  minCaps.values, runCosts.values, rampRates.values,
-                  rampCosts.values, startCosts.values, 
-                  solar.values, wind.values)
-
+df_movingMean = pd.read_csv('../resrc/other/solar_wind_movmean.csv', index_col='Time')
+solar_wind_movmean = df_movingMean['MovAvg3'].astype('double')
+sw_movmean = solar_wind_movmean.values
 
 ##################################################
 #        Parsing Bus Manager Information         #
@@ -79,42 +77,57 @@ distNextChrg  = df_busSchedule['dist_next_chg'].astype('double')
 schedChrgrIds = df_busSchedule['charger_ID'].astype('int32')
 
 ##################################################
-#            Initializing Bus Manager            #
-##################################################
-CapMetro = BusManager.BusManager()
-CapMetro.init_chargers(chrgrIds.values, chrgrName.values, 
-                    numPlugs.values)
-CapMetro.init_buses(busIds.values, capacities.values, 
-                    consumption.values, chargeRates.values, 
-                    distFirstChrg.values)
-CapMetro.init_schedule(schedRouteIds.values, schedBusIds.values, chargeStrts.values,
-                    chargeEnds.values, distNextChrg.values, schedChrgrIds.values)
-
-##################################################
 #                 Running Model                  #
 ##################################################
 avgBusPower = 130.605 * 60 / 1000  # MW
-fltrFactor = 0.65
-renewPwrTime = []
-fltPwrTime = []
-busPwrTime = []
-busTrgtPwrTime = []
+totalCost = []
 #busManagerMode = 2 # Diesel buses
-busManagerMode = 1 # Smart Charging
-#busManagerMode = 0 # Normal Operation Charging (No Discharge, Charge when needed)
+#busManagerMode = 1 # Smart Charging
+busManagerMode = 0 # Normal Operation Charging (No Discharge, Charge when needed)
+movmean = False
 
 cwd = os.getcwd()
 source = cwd + "/output/"
 
-for ffac in range(1, 99):
-    fltrFactor = ffac / 100.0
+for ffac in range(649, 650):
+    ##################################################
+    #          Initializing Utility Manager          #
+    ##################################################
+    AustinEnergy = UtilityManager.UtilityManager()
+    AustinEnergy.init(names.values, types.values, maxCaps.values,
+                    minCaps.values, runCosts.values, rampRates.values,
+                    rampCosts.values, startCosts.values,
+                    solar.values, wind.values)
+
+    ##################################################
+    #            Initializing Bus Manager            #
+    ##################################################
+    CapMetro = BusManager.BusManager()
+    CapMetro.init_chargers(chrgrIds.values, chrgrName.values, 
+                        numPlugs.values)
+    CapMetro.init_buses(busIds.values, capacities.values, 
+                        consumption.values, chargeRates.values, 
+                        distFirstChrg.values)
+    CapMetro.init_schedule(schedRouteIds.values, schedBusIds.values, chargeStrts.values,
+                        chargeEnds.values, distNextChrg.values, schedChrgrIds.values)
+
+    busPwrTime     = []
+    busTrgtPwrTime = []
+    fltPwrTime     = []
+    renewPwrTime   = []
+    fltrFactor = (ffac) / 1000.0
     print("\n\nFilter Factor: " + str(fltrFactor))
 
-    for idx, power in enumerate(df_nonBusConsump['Non-Bus Consumption (MW)']):
+    #for idx, power in enumerate(df_nonBusConsump['Non-Bus Consumption (MW)']):
+    for idx, row in df_nonBusConsump.iterrows():
+        power = row[1]
         if (idx == 0):
             if (busManagerMode < 2):
                 # Calculate filtered power
-                fltrPower = solar[idx] + wind[idx]
+                if (movmean):
+                    fltrPower = sw_movmean[idx]
+                else:
+                    fltrPower = solar[idx] + wind[idx]
                 renewPwrTime.append(solar[idx] + wind[idx])
                 fltPwrTime.append(fltrPower)
 
@@ -136,7 +149,10 @@ for ffac in range(1, 99):
         else:
             if (busManagerMode < 2):
                 # Calculate filtered power
-                fltrPower = (fltrFactor * fltrPower) + ((1-fltrFactor) * (solar[idx] + wind[idx]))
+                if (movmean):
+                    fltrPower = sw_movmean[idx]
+                else:
+                    fltrPower = (fltrFactor * fltrPower) + ((1-fltrFactor) * (solar[idx] + wind[idx]))
                 renewPwrTime.append(solar[idx] + wind[idx])
                 fltPwrTime.append(fltrPower)
                 
@@ -157,39 +173,48 @@ for ffac in range(1, 99):
 
     # Dump Information to files then clear manager objects
     AustinEnergy.file_dump()
-    AustinEnergy.clear_memory()
     CapMetro.file_dump()
-    CapMetro.clear_memory()
+    totalCost.append(AustinEnergy.get_totalCost())
 
     time = range(len(busPwrTime))
     result = map(float.__sub__, busTrgtPwrTime, busPwrTime)
 
-    cols = ['Bus Target Power', 'Bus Achieved Power']
     pltTime     = pd.Series(data=time, name='time')
     busTarget   = pd.Series(data=busTrgtPwrTime, name='Bus Target Power')
     busAchieved = pd.Series(data=busPwrTime, name='Bus Achieved Power')
     df_busTarget = pd.concat([busTarget, busAchieved], axis=1)
     df_busTarget.set_index(pltTime, inplace=True)
 
-    cols = ['Renewable Power', 'Filtered Renewable Power']
     renewPwr    = pd.Series(data=renewPwrTime, name='Renewable Power')
     fltRenewPwr = pd.Series(data=fltPwrTime, name='Filtered Renewable Power')
     df_renewPwr = pd.concat([renewPwr, fltRenewPwr], axis=1)
     df_renewPwr.set_index(pltTime, inplace=True)
 
-    df_busTarget.plot()
     df_busTarget.to_csv('output/BusManagerPower.csv')
+    df_renewPwr.to_csv('output/RenewablePower.csv')
+    '''
+    df_busTarget.plot()
     plt.show()
 
     df_renewPwr.plot()
-    df_renewPwr.to_csv('output/RenewablePower.csv')
     plt.show()
+    '''
 
     # Make new directory and move output files
-    dest = cwd + "/ffac_" + str(ffac)
+    dest = cwd + "/ffac/ffac_" + str(ffac)
     os.mkdir(dest)
     files = os.listdir(source)
 
     for f in files:
         shutil.move(source+f, dest)
 
+
+filterFactors = range(649, 650)
+ff_index = pd.Series(data=filterFactors, name='Filter Factors')
+ff_index = ff_index.apply(lambda x: (x)/1000.0)
+df_filterFactorCost = pd.Series(data=totalCost, name='Total Cost').to_frame()
+df_filterFactorCost.set_index(ff_index, inplace=True)
+
+df_filterFactorCost.to_csv('output/FilterFactorCost.csv')
+df_filterFactorCost.plot()
+plt.show()

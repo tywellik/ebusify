@@ -47,6 +47,8 @@ public:
 
     void file_dump();
 
+    double get_totalCost();
+
     void clear_memory();
 
 private:
