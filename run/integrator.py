@@ -11,8 +11,8 @@ import os
 ##################################################
 ffac_runOpt     = True
 ffac_statFac    = 0.55 # Filter factor used when ffac_runOpt is False
-ffac_rangeBegin = 0.01
-ffac_rangeEnd   = 0.99
+ffac_rangeBegin = 0.30
+ffac_rangeEnd   = 0.70
 ffac_rangeStep  = 0.01
 ffac_range      = [x/1000 for x in np.arange(start=ffac_rangeBegin*1000, stop=(ffac_rangeEnd+ffac_rangeStep)*1000, step=ffac_rangeStep*1000)]
 ffac_useMovMean = False
@@ -66,7 +66,7 @@ modelSettings = {
 cwd = os.getcwd()
 source = cwd + "/output/"
 
-if ffac_runOpt:
+if ffac_runOpt and not ffac_useMovMean:
     totalCost = []
     for ffac in ffac_range:
         modelSettings['filtfactor'] = ffac
