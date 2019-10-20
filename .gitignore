@@ -1,3 +1,12 @@
+# Folders
 .vscode/*
 build/*
 resrc/*
+run/output/*
+
+# File endings
+*.pyc
+
+# Files
+*BusManager.so
+*UtilityManager.so
