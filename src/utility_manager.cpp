@@ -209,13 +209,11 @@ UtilityManager::power_request(double demandPower)
         if (ucSrc.compare("Wind_(aggregated)_-_base_case") == 0){
             LOGDBG("Setting max wind to:  %f", _windProduction.front());
             maxCapacity[arrayLoc[ucSrc]] = _windProduction.front();
-            //minCapacity[arrayLoc[ucSrc]] = _windProduction.front();
             _windProduction.erase(_windProduction.begin());
         }
         if (ucSrc.compare("Solar_(aggregated)_-_base_case") == 0){
             LOGDBG("Setting max solar to: %f", _pvProduction.front());
             maxCapacity[arrayLoc[ucSrc]] = _pvProduction.front();
-            //minCapacity[arrayLoc[ucSrc]] = _pvProduction.front();
             _pvProduction.erase(_pvProduction.begin());
         }
     }
@@ -321,10 +319,8 @@ UtilityManager::run_optimization(int numSources, double* runCosts, double* rampC
             on_a[k]   = plantOn[k] - (int)_sourcePrevState[_sourceNames[k]];
             on_b[k]   = (int)_sourcePrevState[_sourceNames[k]] - plantOn[k];
             costTotal += ( (runCosts[k] * production[k] * plantOn[k])
-                      //+ ((prod_a[k]*prodInd[k] + prod_b[k]*(1-prodInd[k])) * rampCosts[k])
-                      + ((prod_a[k] * prodInd[k]) * rampCosts[k])
-                      //+ ((on_a[k]*onInd[k] + on_b[k]*(1-onInd[k]))*0.5*minCapacity[k]*startupCosts[k]) );
-                      + ((on_a[k] * onInd[k]) * minCapacity[k] * startupCosts[k]) );
+                      +    ((prod_a[k] * prodInd[k]) * rampCosts[k])
+                      +    ((on_a[k] * onInd[k]) * minCapacity[k] * startupCosts[k]) );
         }
         model.setObjective(costTotal, GRB_MINIMIZE);
 
@@ -346,8 +342,6 @@ UtilityManager::run_optimization(int numSources, double* runCosts, double* rampC
             model.addQConstr(prod_b[k] * (1-prodInd[k]) >= 0,                   plantNames[k] + "_prod_b");
             model.addQConstr(on_a[k] * onInd[k] >= 0,                           plantNames[k] + "_on_a");
             model.addQConstr(on_b[k] * (1-onInd[k]) >= 0,                       plantNames[k] + "_on_b");
-
-            //model.addQConstr(((1-plantOn[k]) * production[k]) == 0,             plantNames[k] + "_phantomRamp");
         }
         model.addQConstr(proTotal >= demandPower, "DemandConstraintMax");
         model.addQConstr(proTotal <= demandPower*1.05, "DemandConstraintMax");

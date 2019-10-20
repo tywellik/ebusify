@@ -1,6 +1,7 @@
 #ifndef BUS_H
 #define BUS_H
 #include <map>
+#include "charger.hpp"
 
 namespace BUS {
 
@@ -10,15 +11,15 @@ enum class PowerType {
     e_END
 };
 
-class Bus 
+class Bus
 {
 public:
-    Bus(int id, double capacity, double consumptionRate, double chargeRate, double distFirstCharge);
+    Bus(int id, double capacity, double consumptionRate, double chargeRate, double distFirstCharge, PlugType plugType);
     ~Bus();
     
-    bool operator <(Bus const &obj) { 
-         return _identifier < obj.get_identifier(); 
-    } 
+    bool operator <(Bus const &obj) {
+         return _identifier < obj.get_identifier();
+    }
 
     int init_soc(double stateOfCharge);
 
@@ -33,6 +34,7 @@ public:
     double get_consumpRoute(int ts) const;
     double get_minSoc() const {return _minSoc;}
     double get_maxSoc() const {return _maxSoc;}
+    PlugType get_plugType() const {return _plugType;}
 
     int command_power(double power, double timestep, int simTime, PowerType pt, bool force = false);
 
@@ -44,6 +46,7 @@ private:
     double _distFirstCharge;
     double _minSoc;
     double _maxSoc;
+    PlugType _plugType;
 
     double _stateOfCharge;
     std::map<int, double> _socTime;

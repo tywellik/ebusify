@@ -25,13 +25,15 @@ def run_model(model_settings, inFile_data):
     CapMetro = BusManager.BusManager()
     CapMetro.init_chargers(inFile_data['chargerInfo']['chrgrIds'],
                         inFile_data['chargerInfo']['chrgrName'],
-                        inFile_data['chargerInfo']['numPlugs'])
+                        inFile_data['chargerInfo']['numPlugs'],
+                        inFile_data['chargerInfo']['plugTypes'])
 
     CapMetro.init_buses(inFile_data['busCapacities']['busIds'],
                         inFile_data['busCapacities']['capacities'],
                         inFile_data['busCapacities']['consumption'],
                         inFile_data['busCapacities']['chargeRates'], 
-                        inFile_data['busCapacities']['distFirstChrg'])
+                        inFile_data['busCapacities']['distFirstChrg'],
+                        inFile_data['busCapacities']['plugTypes'])
 
     CapMetro.init_schedule(inFile_data['busSchedule']['schedRouteIds'],
                         inFile_data['busSchedule']['schedBusIds'],

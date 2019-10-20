@@ -23,12 +23,12 @@ public:
     BusManager();
     ~BusManager();
 
-    int init_chargers(bpn::ndarray const& chargerId, bpn::ndarray const& chargerName,
-                    bpn::ndarray const& numberPlugs);
+    int init_chargers(bpn::ndarray const& chargerIds, bpn::ndarray const& chargerNames,
+                    bpn::ndarray const& numberPlugs, bpn::ndarray const& plugTypes);
 
-    int init_buses(bpn::ndarray const& busIds, bpn::ndarray const& capacities,
+    int init_buses(bpn::ndarray const& busIdentifiers, bpn::ndarray const& capacities,
                     bpn::ndarray const& consumptionRates, bpn::ndarray const& chargeRates,
-                    bpn::ndarray const& distFirstCharge); 
+                    bpn::ndarray const& distFirstCharge, bpn::ndarray const& plugTypes); 
 
     int init_schedule(bpn::ndarray const& routeIds, bpn::ndarray const& busIds,
                     bpn::ndarray const& chargeStart, bpn::ndarray const& chargeEnd,
@@ -54,13 +54,13 @@ private:
     std::map<ChargerPtr, std::map<BusPtr, bool>> _necessities;
 
     // Time Series Data per Charging Station
-    std::vector<std::shared_ptr<std::map<ChargerPtr, int>>> _chrgrsUsedTime;
+    std::vector<std::shared_ptr<std::map<ChargerPtr, std::map<PlugType, int>>>> _chrgrsUsedTime;
     std::vector<std::shared_ptr<std::map<ChargerPtr, double>>> _energyChargedTime;
 
     
-    int handle_necessaryCharging(double& pwrConsump, std::map<ChargerPtr, int> *chrgrsUsed, time_t simTime);
-    int handle_remainingCharging(double& pwrConsump, std::map<ChargerPtr, int> *chrgrsUsed, time_t simTime);
-    int handle_powerRequest(double& pwrConsump, std::map<ChargerPtr, int> *chrgrsUsed, double powerRequest, time_t simTime);
+    int handle_necessaryCharging(double& pwrConsump, std::map<ChargerPtr, std::map<PlugType, int>> *chrgrsUsed, time_t simTime);
+    int handle_remainingCharging(double& pwrConsump, std::map<ChargerPtr, std::map<PlugType, int>> *chrgrsUsed, time_t simTime);
+    int handle_powerRequest(double& pwrConsump, std::map<ChargerPtr, std::map<PlugType, int>> *chrgrsUsed, double powerRequest, time_t simTime);
     void handle_charging(double powerRequest, time_t simTime);
     void handle_routes(time_t simTime);
 

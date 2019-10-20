@@ -1,7 +1,7 @@
 import pandas as pd
 import datetime
 
-def parse_files(allFiles, movMeanWindow = 10):
+def parse_files(allFiles, movMeanWindow = 10, autoAddPlugs = False):
 
     # Function used to translate AM/PM time values into seconds
     def translate(x):
@@ -69,13 +69,15 @@ def parse_files(allFiles, movMeanWindow = 10):
     consumption   = df_busCapacities['Consumption'].astype('double')
     chargeRates   = df_busCapacities['Charge_rate'].astype('double')
     distFirstChrg = df_busCapacities['Dist_First_Charge'].astype('double')
+    plugTypes     = df_busCapacities['Plug_Type'].astype('string')
 
     busCapacities_data = {
         'busIds': busIds.values,
         'capacities': capacities.values, 
         'consumption': consumption.values,
         'chargeRates': chargeRates.values,
-        'distFirstChrg': distFirstChrg.values
+        'distFirstChrg': distFirstChrg.values,
+        'plugTypes': plugTypes.values
     }
 
     df_busSchedule = pd.read_csv(allFiles['busSchedule'])
@@ -102,28 +104,31 @@ def parse_files(allFiles, movMeanWindow = 10):
     chrgrIds  = df_chargerInfo['chrg_ID'].astype('int32')
     chrgrName = df_chargerInfo['chrg_name'].astype('string')
     numPlugs  = df_chargerInfo['num_plugs'].astype('int32')
+    plugTypes = df_chargerInfo['plug_type'].astype('string')
 
-    # Add chargers included with buses into chargerInfo_data
-    df_chargerInfo.set_index('chrg_ID', inplace=True)
-    chrgStationInclPlugs = {}
-    for idx, row in df_busCapacities.loc[df_busCapacities['Capacity'] == 80].iterrows():
-        chargerID = busToCharger[int(row['bus_ID'])]
-        if chargerID in chrgStationInclPlugs.keys():
-            chrgStationInclPlugs[chargerID] += 1
-        else:
-            chrgStationInclPlugs[chargerID] = 1
+    # This is not working due to change in charger_info.csv format
+    if ( False ): # autoAddPlugs ):
+        # Add chargers included with buses into chargerInfo_data
+        df_chargerInfo.set_index('chrg_ID', inplace=True)
+        chrgStationInclPlugs = {}
+        for idx, row in df_busCapacities.loc[df_busCapacities['Capacity'] == 80].iterrows():
+            chargerID = busToCharger[int(row['bus_ID'])]
+            if chargerID in chrgStationInclPlugs.keys():
+                chrgStationInclPlugs[chargerID] += 1
+            else:
+                chrgStationInclPlugs[chargerID] = 1
 
-    for chrgr in chrgStationInclPlugs:
-        df_chargerInfo.at[chrgr, 'incl_plugs'] = int(chrgStationInclPlugs[chrgr])
+        for chrgr in chrgStationInclPlugs:
+            df_chargerInfo.at[chrgr, 'incl_plugs'] = int(chrgStationInclPlugs[chrgr])
 
-    df_chargerInfo.fillna(0, inplace=True)
-    inclPlugs  = df_chargerInfo['incl_plugs'].astype('int32')
+        df_chargerInfo.fillna(0, inplace=True)
+        inclPlugs  = df_chargerInfo['incl_plugs'].astype('int32')
 
     chargerInfo_data = {
         'chrgrIds': chrgrIds.values,
         'chrgrName': chrgrName.values, 
         'numPlugs': numPlugs.values,
-        'inclPlugs': inclPlugs.values
+        'plugTypes': plugTypes.values
     }
 
     ##################################################

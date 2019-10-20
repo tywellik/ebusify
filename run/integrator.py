@@ -9,14 +9,14 @@ import os
 ##################################################
 #             Filter Factor Settings             #
 ##################################################
-ffac_runOpt     = True
-ffac_statFac    = 0.55 # Filter factor used when ffac_runOpt is False
-ffac_rangeBegin = 0.30
-ffac_rangeEnd   = 0.70
+ffac_runOpt     = False
+ffac_statFac    = 0.52 # Filter factor used when ffac_runOpt is False
+ffac_rangeBegin = 0.40
+ffac_rangeEnd   = 0.60
 ffac_rangeStep  = 0.01
 ffac_range      = [x/1000 for x in np.arange(start=ffac_rangeBegin*1000, stop=(ffac_rangeEnd+ffac_rangeStep)*1000, step=ffac_rangeStep*1000)]
 ffac_useMovMean = False
-ffac_movMeanWin = 30
+ffac_movMeanWin = 5
 
 ##################################################
 #              Bus Manager Settings              #
@@ -25,7 +25,7 @@ ffac_movMeanWin = 30
 # 0 - Normal Operation Charging
 # 1 - Smart Charging
 # 2 - Diesel buses
-busMan_mode = 1
+busMan_mode = 0
 avgBusPower = 130.605 * 60 / 1000  # MW
 
 
@@ -54,7 +54,6 @@ inFile_data = parse_files(inFile_allFiles, ffac_movMeanWin)
 ##################################################
 modelSettings = {
     'busMan_mode': busMan_mode,
-    'inFile_data': inFile_data,
     'use_movMean': ffac_useMovMean,
     'avg_busPower': avgBusPower
 }

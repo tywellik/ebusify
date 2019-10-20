@@ -34,7 +34,7 @@ BusManager::~BusManager()
 
 int
 BusManager::init_chargers(bpn::ndarray const& chargerIds, bpn::ndarray const& chargerNames,
-                        bpn::ndarray const& numberPlugs)
+                        bpn::ndarray const& numberPlugs, bpn::ndarray const& plugTypes)
 {
     unsigned int dataLen = chargerIds.shape(0);
     if (dataLen != chargerNames.shape(0)  || dataLen != numberPlugs.shape(0)){
@@ -44,20 +44,26 @@ BusManager::init_chargers(bpn::ndarray const& chargerIds, bpn::ndarray const& ch
 
     int* chrgIds   = reinterpret_cast<int*>(chargerIds.get_data());
     int* numPlugs  = reinterpret_cast<int*>(numberPlugs.get_data());
-
+    int* plgTypes  = reinterpret_cast<int*>(plugTypes.get_data());
+    
     //std::map<int, ChargerPtr> _chargers;
     for (int line = 0; line < dataLen; ++line){
         int chrgId = chrgIds[line];
         std::string chargerName = std::string(bp::extract<char const *>(chargerNames[line]));
+        std::string plugName = std::string(bp::extract<char const *>(plugTypes[line]));
+        PlugType plugType = plugNameToType[plugName];
         ChargerPtr chrgPtr;
 
-        // If charging station is new, add it to the map
-        if ( _chargers.find(chrgId) == _chargers.end() ){
-            Charger *charger = new Charger(chrgId, chargerName, numPlugs[line]);
-            chrgPtr.reset(charger);    
+        // If charging station is new, add it to the map then add plugs
+        // otherwise, just add plugs
+        auto it = _chargers.find(chrgId);
+        if ( it == _chargers.end() ){
+            Charger *charger = new Charger(chrgId, chargerName);
+            charger->add_plugs(numPlugs[line], plugType);
+            chrgPtr.reset(charger);
             _chargers.insert(std::pair<int, ChargerPtr>(chrgId, chrgPtr));
         } else {
-            chrgPtr = _chargers[chrgId];
+            it->second->add_plugs(numPlugs[line], plugType);
         }
     }
 }
@@ -66,7 +72,7 @@ BusManager::init_chargers(bpn::ndarray const& chargerIds, bpn::ndarray const& ch
 int 
 BusManager::init_buses(bpn::ndarray const& busIdentifiers, bpn::ndarray const& capacities,
                     bpn::ndarray const& consumptionRates, bpn::ndarray const& chargeRates,
-                    bpn::ndarray const& distFirstCharge)
+                    bpn::ndarray const& distFirstCharge, bpn::ndarray const& plugTypes)
 {
     unsigned int dataLen = busIdentifiers.shape(0);
     if (dataLen != capacities.shape(0)  || dataLen != consumptionRates.shape(0) ||
@@ -83,10 +89,13 @@ BusManager::init_buses(bpn::ndarray const& busIdentifiers, bpn::ndarray const& c
 
     for (int line = 0; line < dataLen; ++line)
     {
+        std::string plugName = std::string(bp::extract<char const *>(plugTypes[line]));
+        PlugType plugType = plugNameToType[plugName];
+
         // If bus is new, add it to the map
         if ( _buses.find(busIds[line]) == _buses.end() ){
             BusPtr busPtr;
-            Bus *bus = new Bus(busIds[line], caps[line], consumpRates[line], chrgRates[line], distFirstChrg[line]);
+            Bus *bus = new Bus(busIds[line], caps[line], consumpRates[line], chrgRates[line], distFirstChrg[line], plugType);
             busPtr.reset(bus);
             _buses.insert(std::pair<int, BusPtr>(busIds[line], busPtr));
         }
@@ -176,8 +185,8 @@ BusManager::run(double powerRequest, int mode, time_t simTime)
         necessities.clear();
     }
 
-    std::map<ChargerPtr, int> *chrgrsUsed = new std::map<ChargerPtr, int>;
-    std::shared_ptr<std::map<ChargerPtr, int>> chrgrsUsedPtr;
+    std::map<ChargerPtr, std::map<PlugType, int>> *chrgrsUsed = new std::map<ChargerPtr, std::map<PlugType, int>>;
+    std::shared_ptr<std::map<ChargerPtr, std::map<PlugType, int>>> chrgrsUsedPtr;
     handle_necessaryCharging(powerConsumption, chrgrsUsed, simTime);
     if (allowSmartCharge)
         handle_powerRequest(powerConsumption, chrgrsUsed, powerRequest, simTime);
@@ -201,15 +210,18 @@ BusManager::file_dump()
     /** Charger Usage */
     outfile.open("output/charger_usage.csv");
     outfile << ",";
-    for (auto& chrgr: *_chrgrsUsedTime[0])
-        outfile << chrgr.first->get_name() << ",";
+    for (auto& chrgr: *_chrgrsUsedTime[0]){
+        for (auto plugType = chrgr.second.begin(); plugType != chrgr.second.end(); plugType++)
+            outfile << chrgr.first->get_name() << " - " << plugTypeToName[plugType->first] << ",";
+    }
     outfile << std::endl;
 
     int simTime = 16200;
     for (auto& chrgrMap: _chrgrsUsedTime){
         outfile << simTime << ",";
         for (auto& chrgr: *chrgrMap){
-            outfile << chrgr.second << ",";
+            for (auto plugType = chrgr.second.begin(); plugType != chrgr.second.end(); plugType++)
+                outfile << plugType->second << ",";
         }
         outfile << std::endl;
 
@@ -277,31 +289,41 @@ BusManager::clear_memory()
 
 
 int
-BusManager::handle_necessaryCharging(double& pwrConsump, std::map<ChargerPtr, int> *chrgrsUsed, time_t simTime)
+BusManager::handle_necessaryCharging(double& pwrConsump, std::map<ChargerPtr, std::map<PlugType, int>> *chrgrsUsed, time_t simTime)
 {
-    int numPlugs, plugsInUse, ret;
+    int ret;
     double chrgRate;
+    std::map<PlugType, int> numPlugs, plugsInUse;
     std::vector<Priority> priorities;
     std::map<BusPtr, bool> necessities;
+    
+    if (simTime == 62640){
+        while(1){
+            int i = 1;
+            break;
+        }
+    }
 
     for(auto& chrgr: _busSchedule){
         numPlugs = chrgr.first->get_numPlugs();
-        plugsInUse = 0;
+        for ( auto it = numPlugs.begin(); it != numPlugs.end(); it++ )
+            plugsInUse[it->first] = 0;
         priorities = _priorities[chrgr.first];
         necessities = _necessities[chrgr.first];
 
         // Priorities vector is in order so we charge the most necessary bus first
         for (auto& priority : priorities){
             BusPtr bus = priority.first;
+            PlugType plugType = bus->get_plugType();
 
-            if ( necessities[bus] == true && plugsInUse < numPlugs ){
-                plugsInUse++;
+            if ( necessities[bus] == true && plugsInUse[plugType] < numPlugs[plugType] ){
+                plugsInUse[plugType]++;
                 chrgRate = bus->get_chargeRate(); // kWh / min
                 chrgRate *= 60; // kW
                 ret = bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER);
                 if ( ret != 0 ){
                     if ( ret == OVER_MAX_SOC ){
-                        std::cout << simTime << ":\tBus " << bus->get_identifier() << ": Command would place bus over max SOC" << std::endl;
+                        LOGDBG("%i:\tBus %s : Command would place bus over max SOC", simTime, bus->get_identifier().c_str());
                         double busSoc = bus->get_stateOfCharge();
                         double busCap = bus->get_capacity();
                         double busMaxSoc = bus->get_maxSoc();
@@ -323,6 +345,7 @@ BusManager::handle_necessaryCharging(double& pwrConsump, std::map<ChargerPtr, in
             }
         }
         (*chrgrsUsed)[chrgr.first] = plugsInUse;
+        plugsInUse.clear();
     }
 
     return 0;
@@ -330,31 +353,35 @@ BusManager::handle_necessaryCharging(double& pwrConsump, std::map<ChargerPtr, in
 
 
 int
-BusManager::handle_remainingCharging(double& pwrConsump, std::map<ChargerPtr, int> *chrgrsUsed, time_t simTime)
+BusManager::handle_remainingCharging(double& pwrConsump, std::map<ChargerPtr, std::map<PlugType, int>> *chrgrsUsed, time_t simTime)
 {
-    int numPlugs, plugsInUse, ret;
+    int ret;
     double chrgRate;
+    std::map<PlugType, int> numPlugs, plugsInUse;
     std::vector<Priority> priorities;
     std::map<BusPtr, bool> necessities;
 
     for(auto& chrgr: _busSchedule){
         numPlugs = chrgr.first->get_numPlugs();
-        plugsInUse = (*chrgrsUsed)[chrgr.first];
+        for ( auto it = numPlugs.begin(); it != numPlugs.end(); it++ )
+            plugsInUse[it->first] = (*chrgrsUsed)[chrgr.first][it->first];
         priorities = _priorities[chrgr.first];
         necessities = _necessities[chrgr.first];
 
         // Priorities vector is in order so we charge the most necessary bus first
         for (auto& priority : priorities){
             BusPtr bus = priority.first;
+            PlugType plugType = bus->get_plugType();
             double chargePriority = priority.second;
 
-            if ( necessities[bus] == false && chargePriority > 0.0 && plugsInUse < numPlugs ){
-                plugsInUse++;
+            if ( necessities[bus] == false && chargePriority > 0.0 && plugsInUse[plugType] < numPlugs[plugType] ){
+                plugsInUse[plugType]++;
                 chrgRate = bus->get_chargeRate(); // kWh / min
                 chrgRate *= 60; // kW
                 ret = bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER);
                 if ( ret != 0 ){
                     if ( ret == OVER_MAX_SOC ){
+                        LOGDBG("%i:\tBus %s : Command would place bus over max SOC", simTime, bus->get_identifier().c_str());
                         double busSoc = bus->get_stateOfCharge();
                         double busCap = bus->get_capacity();
                         double busMaxSoc = bus->get_maxSoc();
@@ -376,6 +403,7 @@ BusManager::handle_remainingCharging(double& pwrConsump, std::map<ChargerPtr, in
             }
         }
         (*chrgrsUsed)[chrgr.first] = plugsInUse;
+        plugsInUse.clear();
     }
 
     return 0;
@@ -383,10 +411,11 @@ BusManager::handle_remainingCharging(double& pwrConsump, std::map<ChargerPtr, in
 
 
 int
-BusManager::handle_powerRequest(double& pwrConsump, std::map<ChargerPtr, int> *chrgrsUsed, double powerRequest, time_t simTime)
+BusManager::handle_powerRequest(double& pwrConsump, std::map<ChargerPtr, std::map<PlugType, int>> *chrgrsUsed, double powerRequest, time_t simTime)
 {
-    int numPlugs, plugsInUse, ret;
+    int ret;
     double chrgRate, targetPwr;
+    std::map<PlugType, int> numPlugs, plugsInUse;
     std::vector<Priority> priorities;
     std::map<BusPtr, bool> necessities;
 
@@ -395,8 +424,11 @@ BusManager::handle_powerRequest(double& pwrConsump, std::map<ChargerPtr, int> *c
 
     // Order all available buses by priority
     for(auto& chrgr: _busSchedule){
-        auto append = _priorities[chrgr.first];
-        priorities.insert(priorities.end(), append.begin(), append.end());
+        auto appendPriorities = _priorities[chrgr.first];
+        priorities.insert(priorities.end(), appendPriorities.begin(), appendPriorities.end());
+
+        auto appendNecessities = _necessities[chrgr.first];
+        necessities.insert(appendNecessities.begin(), appendNecessities.end());
     }
     std::sort(priorities.begin(), priorities.end(), compare_priority);
 
@@ -404,16 +436,18 @@ BusManager::handle_powerRequest(double& pwrConsump, std::map<ChargerPtr, int> *c
         if ( targetPwr > 0.0 ){
             auto bus   = priorities.front().first;
             auto chargePriority = priorities.front().second;
+            PlugType plugType = bus->get_plugType();
             auto chrgr = _busToCharger[bus];
             numPlugs   = chrgr->get_numPlugs();
             plugsInUse = (*chrgrsUsed)[chrgr];
 
-            if ( necessities[bus] == false && plugsInUse < numPlugs ){
-                (*chrgrsUsed)[chrgr]++;
+            if ( necessities[bus] == false && plugsInUse[plugType] < numPlugs[plugType] ){
+                (*chrgrsUsed)[chrgr][plugType]++;
                 chrgRate = std::min(bus->get_chargeRate()*60, targetPwr);
                 ret = bus->command_power(chrgRate, 60, simTime, PowerType::e_ATCHARGER);
                 if ( ret != 0 ){
                     if ( ret == OVER_MAX_SOC ){
+                        LOGDBG("%i:\tBus %s : Command would place bus over max SOC", simTime, bus->get_identifier().c_str());
                         double busSoc = bus->get_stateOfCharge();
                         double busCap = bus->get_capacity();
                         double busMaxSoc = bus->get_maxSoc();
@@ -442,12 +476,13 @@ BusManager::handle_powerRequest(double& pwrConsump, std::map<ChargerPtr, int> *c
         else if ( targetPwr < 0.0 ){
             auto bus   = priorities.back().first;
             auto chargePriority = priorities.back().second;
+            PlugType plugType = bus->get_plugType();
             auto chrgr = _busToCharger[bus];
             numPlugs   = chrgr->get_numPlugs();
             plugsInUse = (*chrgrsUsed)[chrgr];
 
-            if ( necessities[bus] == false && chargePriority < 0.0 && plugsInUse < numPlugs ){
-                (*chrgrsUsed)[chrgr]++;
+            if ( necessities[bus] == false && chargePriority < 0.0 && plugsInUse[plugType] < numPlugs[plugType] ){
+                (*chrgrsUsed)[chrgr][plugType]++;
                 chrgRate = std::max(-bus->get_chargeRate()*60, targetPwr);
                 chrgRate = std::max(chrgRate, chargePriority*bus->get_chargeRate());
                 
@@ -479,6 +514,8 @@ BusManager::handle_powerRequest(double& pwrConsump, std::map<ChargerPtr, int> *c
 
             priorities.erase(--priorities.end());
         }
+
+        plugsInUse.clear();
     }
 
     return 0;

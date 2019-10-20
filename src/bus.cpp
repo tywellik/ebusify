@@ -5,7 +5,7 @@
 
 namespace BUS {
 
-Bus::Bus(int id, double capacity, double consumptionRate, double chargeRate, double distFirstCharge)
+Bus::Bus(int id, double capacity, double consumptionRate, double chargeRate, double distFirstCharge, PlugType plugType)
 :
     _identifier(id),
     _capacity(capacity),
@@ -13,7 +13,8 @@ Bus::Bus(int id, double capacity, double consumptionRate, double chargeRate, dou
     _chargeRate(chargeRate),
     _distFirstCharge(distFirstCharge),
     _minSoc(0.1),
-    _maxSoc(0.9)
+    _maxSoc(0.9),
+    _plugType(plugType)
 {
     _stateOfCharge = 0.5;
     _stateOfCharge -= (distFirstCharge * consumptionRate)/capacity;
