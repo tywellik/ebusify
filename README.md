@@ -16,3 +16,8 @@ ln -s ../build/BusManager.so BusManager.so
 ln -s ../build/UtilityManager.so UtilityManager.so
 ```
 
+## Run Model
+```
+cd run
+python integrator.py | grep -v non-commercial
+```
